@@ -1,7 +1,10 @@
 # TODO — purchase-pipeline
 
-Tasks are ordered: **task 0 must come first**, the rest are independent of each
-other. Every task assumes the project conventions in `~/.claude-personal/CLAUDE.md`:
+**Tasks 0, 1 and 2 are done** (2026-07-25/27) — kept below with a `DONE` note
+rather than deleted, because each records a real regression case worth keeping.
+Tasks 3, 4 and 5 remain.
+
+Tasks were ordered: **task 0 first**, the rest independent of each other. Every task assumes the project conventions in `~/.claude-personal/CLAUDE.md`:
 write the failing test first, then implement; type-annotate public APIs; update
 docs and CHANGELOG; commit with `git-ai-commit`; don't push without being asked.
 
@@ -12,7 +15,39 @@ hypotheticals.
 
 ---
 
-## 0. Migrate the purchasing code out of inventory-md
+## 0. Migrate the purchasing code out of inventory-md — **DONE**
+
+Done: the modules listed below live in `src/purchase_pipeline/`, each exposed as
+a console script (see README); their tests moved with them. Packaging is
+hatchling + hatch-vcs, ruff, pytest and a CI workflow that checks out
+inventory-md first (it is a library dependency and not on PyPI).
+
+Two supporting moves inside inventory-md were needed and are **not** scope creep
+away from "leave it in inventory-md" — both files stayed there, they only became
+importable/runnable by name instead of being loose scripts:
+
+* `bb_dates.py` → `src/inventory_md/bb_dates.py`, so `shop_import` can import the
+  same date parser `extract_barcodes.py` uses.
+* `check_quality.py` → `src/inventory_md/check_quality.py` with a new
+  `inventory-md-check-quality` console script, so `pipeline` can run the quality
+  gate by name (like `inventory-md parse`) rather than hardcoding a path into a
+  sibling checkout.
+
+Still open from this task:
+
+* `~/solveig-inventory/.claude/settings.local.json` — the command allowlist still
+  lists `~/inventory-md/scripts/*.py` paths that no longer exist.
+* `~/.claude/skills/` is registered in `~/.claude` as a gitlink (mode 160000)
+  with no `.gitmodules` and no repo inside, so the personal skill edits there are
+  unversioned. Worth fixing before relying on them.
+* The generic guide `~/inventory-md/claude-skills/process-shopping.md` was
+  updated in place. It is now a manual for *this* project living in that one —
+  moving it here would finish the job, but it is referenced by path from the
+  personal skill, so it was left alone.
+
+---
+
+## 0b. (historical) Original migration notes
 
 **Do this before tasks 3 and 4**, which create new files that would otherwise
 land in the wrong repository and have to be moved again with their tests.
@@ -21,7 +56,7 @@ Move from `inventory-md/scripts/` to this project:
 
 - `shop_import.py`, `pipeline.py`, `shopping_context.py`
 - `ledger.py`
-- `tingbok_push.py`, `off_upload.py`, `openprices_publish.py`, `op_auth.py`
+- `tingbok_push.py`, `off_upload.py`, `openprices_publish.py`, `op_auth.py` (now the `openprices-auth` command)
 - `check_grocery_ledger` (currently `~/bin/check-grocery-ledger`)
 - the staging YAML schema and its documentation
 
@@ -46,7 +81,13 @@ Afterwards, update:
 
 ---
 
-## 1. `match_shop_osm` must refuse an inexact shop key
+## 1. `match_shop_osm` must refuse an inexact shop key — **DONE**
+
+Done: resolution requires an exact (case-insensitive, whitespace-stripped) cache
+key; a partial match lists the candidate branch keys instead, including when
+there is only one — which is exactly the case the old code resolved silently.
+The optional follow-up (derive the branch key from the receipt) is **not** done;
+the per-chain address rule it needs is now recorded in `receipt-formats.json`.
 
 **Bug, with a live reproducer.** `shopping_context.py "Billa"` returned
 `WAY:1016681733` — the *Varna* branch — for a trip to the **Sozopol** branch.
@@ -68,7 +109,12 @@ a per-chain rule, so it belongs in the receipt-format registry (task 2).
 
 ---
 
-## 2. Receipt-format registry, and a mandatory total reconciliation
+## 2. Receipt-format registry, and a mandatory total reconciliation — **DONE**
+
+Done: `src/purchase_pipeline/data/receipt-formats.json` + the `receipt-formats`
+command for (a), and `staging.reconcile_total()` enforced from `require_flat()`
+for (b). Only Billa and Lidl have entries — a chain is recorded only once its
+receipt has actually been read, and each entry must carry a `source`.
 
 Two related pieces.
 
@@ -118,7 +164,7 @@ Overpass with a radius is the right query.
 ## 4. `osm_add_shop.py` — create a surveyed shop node
 
 Depends on task 3 (reuses its duplicate query) and on a one-time
-`osm_auth.py` (OAuth 2.0, mirroring `op_auth.py`). The `osmapi` package handles
+`osm_auth.py` (OAuth 2.0, mirroring `op_auth.py` (now the `openprices-auth` command)). The `osmapi` package handles
 the changeset dance.
 
 ```
@@ -145,15 +191,15 @@ mussel price could not be published to Open Prices.
 
 ---
 
-## 5. `pipeline.py` batch mode
+## 5. `purchase-pipeline` batch mode
 
 ```
-pipeline.py A.yaml B.yaml C.yaml --commit
+purchase-pipeline A.yaml B.yaml C.yaml --commit
 ```
 
 Run the commit stages for several staging files, validating **once** at the end
 rather than per file. On 2026-07-24 there were three shops in one day, so
-`inventory-md parse` + `check_quality.py` ran three times at roughly two minutes
+`inventory-md parse` + `inventory-md-check-quality` ran three times at roughly two minutes
 each — long enough that each invocation had to be backgrounded, and long enough
 that the runs had to be serialised by hand to avoid racing on `inventory.json`.
 

@@ -1,0 +1,38 @@
+{
+  "_README": [
+    "Per-chain receipt layout quirks, read by scripts/receipt_formats.py.",
+    "Keyed by CHAIN, not by branch — a chain's receipts are laid out the same way",
+    "in every town. A shop name matches when the chain is a whole-word prefix of it.",
+    "",
+    "Add an entry only for a chain whose receipt has actually been read, and give",
+    "every entry a 'source' naming that receipt. A missing entry prints as missing;",
+    "a guessed entry gets trusted. Leave a field out when it is not known — the",
+    "checklist renders it as '(not recorded)', which is the honest answer.",
+    "",
+    "Fields: branch_address (header|footer), multiplier_line (precedes|follows|unknown),",
+    "discounts, deposits, dual_currency, weighed_items. Each may be paired with a",
+    "'<field>_note' — note the exact field name, or the note is silently not rendered."
+  ],
+
+  "Billa": {
+    "branch_address": "footer",
+    "branch_address_note": "The header carries the company's registered address (on the 2026-07-24 Sozopol receipt: СОЗОПОЛ УЛ. ИНДУСТРИАЛНА 3); the actual store address is in the card-terminal footer (УЛ. РЕПУБЛИКАНСКА 5). OSM matches the footer. Take the branch key from the footer.",
+    "multiplier_line": "precedes",
+    "multiplier_line_note": "The `N x unit_price` line is printed ABOVE the item it belongs to. On 2026-07-24 `3 x 0.71` sits under `BILLA ПОП КЪРПИ 5Б` but belongs to the `ШУМЕНСКО` line below it; the naive top-down reading bills three beers to a pack of cleaning cloths. Both readings look plausible on the photo — only one sums to the printed total.",
+    "source": "Billa Sozopol, 2026-07-24 (hand-transcribed from a photo)"
+  },
+
+  "Lidl": {
+    "multiplier_line": "unknown",
+    "multiplier_line_note": "Never transcribed from a photo — Lidl trips are imported from the lidl_receipts.json export, which carries one object per line item with explicit quantity, so there is no multiplier line to misread. The printed receipt's layout is genuinely unrecorded; read it before adding one here.",
+    "discounts": {
+      "representation": "per-line `discounts` array in the JSON export, not separate printed lines",
+      "sign": "positive saving amounts; the line's `line_total` is GROSS and `net_total` is what was charged",
+      "already_netted": false,
+      "kinds": "lidlplus_coupon (Open Prices LOYALTY_PROGRAM), markdown (EXPIRES_SOON); a line can carry several at once"
+    },
+    "discounts_note": "The 2026-07-21 кисело краве мляко line carried both a Lidl Plus coupon and a separate 20% short-expiry markdown. Reading `total_price_no_saving` as the trip total overstates it — that trip's gross was 54.43 against a 51.77 net charge.",
+    "weighed_items": "receipt name ends in `НА КГ`; quantity is kilograms and `price` is per-kg",
+    "source": "lidl_receipts.json export, trips 2026-07-17 and 2026-07-21"
+  }
+}

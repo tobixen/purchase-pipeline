@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+venv/
+.venv/
+
+# Written by hatch-vcs at build time from the git tag.
+src/purchase_pipeline/_version.py

@@ -1,0 +1,107 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "purchase-pipeline"
+dynamic = ["version"]
+description = "Turn a shopping trip into structured data: receipt → staging file → ledger, inventory, observations, published prices"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+authors = [
+    {name = "Tobias Brox", email = "tobias@tobixen.no"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Topic :: Office/Business :: Financial :: Accounting",
+    "Topic :: Home Automation",
+]
+# inventory-md is a *library* dependency, not just a CLI one: shop_import reads
+# receipt dates with inventory_md.bb_dates, and inventory_import calls
+# inventory_md.additem / .parser directly. See README "Relationship to inventory-md".
+dependencies = [
+    "inventory-md",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# Publishing to Open Prices / Open Food Facts, and pushing to tingbok.
+publish = [
+    "niquests",
+    "openfoodfacts>=3.0",
+    "Pillow>=10.0.0",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.8",
+    "pre-commit>=4.0",
+    "niquests",
+    "openfoodfacts>=3.0",
+    "Pillow>=10.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+shop-import = "purchase_pipeline.shop_import:main"
+purchase-pipeline = "purchase_pipeline.pipeline:main"
+purchase-ledger = "purchase_pipeline.ledger:main"
+shopping-context = "purchase_pipeline.shopping_context:main"
+receipt-formats = "purchase_pipeline.receipt_formats:main"
+staging-to-inventory = "purchase_pipeline.inventory_import:main"
+tingbok-push = "purchase_pipeline.tingbok_push:main"
+off-upload = "purchase_pipeline.off_upload:main"
+openprices-publish = "purchase_pipeline.openprices_publish:main"
+openprices-auth = "purchase_pipeline.op_auth:main"
+check-grocery-ledger = "purchase_pipeline.check_grocery_ledger:main"
+
+[project.urls]
+Repository = "https://github.com/tobixen/purchase-pipeline"
+Issues = "https://github.com/tobixen/purchase-pipeline/issues"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/purchase_pipeline/_version.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/purchase_pipeline"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "PT"]
+ignore = ["E501"]  # Line length handled separately
+
+[tool.ruff.lint.isort]
+known-first-party = ["purchase_pipeline"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*.py" = ["PT011", "PT006"]  # Allow broad pytest.raises and string parametrize
+"src/purchase_pipeline/*.py" = ["T201"]  # These modules are CLIs; print is the output
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+filterwarnings = ["error"]
+markers = [
+    "integration: requires a live tingbok service — skipped automatically when unreachable",
+]
