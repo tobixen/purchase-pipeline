@@ -33,17 +33,22 @@ importable/runnable by name instead of being loose scripts:
   gate by name (like `inventory-md parse`) rather than hardcoding a path into a
   sibling checkout.
 
+Also done (2026-07-28/29): the workflow guide moved here as
+`claude-skills/process-shopping.md` — it is a manual for this project and all
+but three of its commands are this project's; the item-adding reference it
+duplicated now points at inventory-md's `docs/ADDING-ITEMS.md`. Both
+`~/solveig-inventory/.claude/settings.json` (committed) and `settings.local.json`
+now allowlist the console scripts. `~/bin/check-grocery-ledger` is deleted from
+the dotfiles repo, the project being user-installed so `~/.local/bin` carries it.
+
 Still open from this task:
 
-* `~/solveig-inventory/.claude/settings.local.json` — the command allowlist still
-  lists `~/inventory-md/scripts/*.py` paths that no longer exist.
 * `~/.claude/skills/` is registered in `~/.claude` as a gitlink (mode 160000)
   with no `.gitmodules` and no repo inside, so the personal skill edits there are
   unversioned. Worth fixing before relying on them.
-* The generic guide `~/inventory-md/claude-skills/process-shopping.md` was
-  updated in place. It is now a manual for *this* project living in that one —
-  moving it here would finish the job, but it is referenced by path from the
-  personal skill, so it was left alone.
+* `check_grocery_ledger` crashes on a directory `--diary` (`IsADirectoryError`),
+  while `shopping_context.read_diary_text` handles exactly that. Now that both
+  live here, the second should just use the first.
 
 ---
 

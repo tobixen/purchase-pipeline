@@ -2,10 +2,15 @@
 """Personal bookkeeping check: every *grocery* (and *equipment*) diary expense
 must have a matching ledger entry; dining and most other classes are exempt.
 
-This is personal glue that reads BOTH the diary (~/solveig) and the purchases
-ledger (~/regnskap). It deliberately lives in ~/bin and imports neither the
-inventory-md nor the diary-md package — those are independent projects that must
-not depend on each other or on this policy.
+It reads BOTH the diary (~/solveig) and the purchases ledger (~/regnskap), and
+imports neither the diary-md nor the inventory-md package: those are independent
+projects that must not depend on each other, nor on one person's bookkeeping
+policy.
+
+That combination is why this lived loose in ~/bin for a while — it belonged to
+neither project it reads from. It belongs here: the ledger is this project's,
+and reconciling it against the diary is a question about purchases, which is
+what this project answers.
 
 Rule (per tobixen, 2026-07-21):
   - `groceries`  -> MUST have a ledger entry (always).

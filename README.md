@@ -28,6 +28,18 @@ pip install -e ~/inventory-md     # not on PyPI; see below
 pip install -e .
 ```
 
+The console scripts must be on `PATH` for the workflow guide and the Claude
+allowlists to work — a user install (`pip install --user -e .`, scripts landing
+in `~/.local/bin`) is enough.
+
+## The workflow guide
+
+[`claude-skills/process-shopping.md`](claude-skills/process-shopping.md) is the
+generic, staged procedure for turning a trip into all of the above. It lives
+here because all but three of its commands do. What an inventory *item* looks
+like once written is inventory-md's business and stays in its
+[`docs/ADDING-ITEMS.md`](https://github.com/tobixen/inventory-md/blob/main/docs/ADDING-ITEMS.md).
+
 ## Commands
 
 Every module is a console script; none of them need a path.
@@ -43,7 +55,7 @@ Every module is a console script; none of them need a path.
 | `tingbok-push` | push reviewed price/receipt-name observations to tingbok |
 | `off-upload` | create missing Open Food Facts products |
 | `openprices-publish` / `openprices-auth` | publish prices to Open Prices / mint a token |
-| `check-grocery-ledger` | the diary↔ledger coverage gate |
+| `check-grocery-ledger` | the diary↔ledger coverage gate (was `~/bin/check-grocery-ledger`) |
 
 ## The staging file is the human gate
 
