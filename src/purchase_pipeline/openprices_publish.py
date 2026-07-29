@@ -6,8 +6,14 @@ RECEIPT proof, attach the shop's confirmed OSM location, then POST one price per
 line item that has an EAN.
 
 Shop location is an explicit, human-confirmed OSM object (``--osm TYPE:ID``,
-cached per shop) — never auto-geocoded, because receipt photos are often taken
-away from the shop. ``--suggest-from-photo`` only prints an EXIF-GPS hint.
+cached per branch in :mod:`purchase_pipeline.shop_osm`) — never auto-geocoded,
+because receipt photos are often taken away from the shop. Find the object with
+``osm-resolve``; ``--coords-from-photo`` only prints a photo's EXIF GPS so that
+``osm-resolve`` has a point to search around.
+
+This used to reverse-geocode with Nominatim instead. That is the wrong tool: a
+geocoder answers "what address is this point", so on 2026-07-24 it returned a
+neighbouring wine shop for the Sozopol fish shop's coordinates.
 
 Auth: token from $OPENPRICES_TOKEN or ~/.config/inventory-md/openprices-token
 (run op_auth.py once to create it). Dry-run by default; --commit publishes.
@@ -29,10 +35,10 @@ from typing import Any
 
 import niquests as requests
 
+from purchase_pipeline.shop_osm import load_cache, match_shop_osm, parse_osm_spec, save_entry, shop_osm_candidates
+
 BASES = {"org": "https://prices.openfoodfacts.org", "net": "https://prices.openfoodfacts.net"}
 TOKEN_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "inventory-md" / "openprices-token"
-OSM_CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "inventory-md" / "osm-geocode-cache.json"
-USER_AGENT = "solveig-inventory/openprices_publish (tobixen)"
 
 
 def _dms_to_deg(dms, ref: str) -> float:
@@ -130,70 +136,45 @@ def build_category_price(
     return payload
 
 
-def _osm_cache_key(lat: float, lon: float) -> str:
-    return f"{round(lat, 4)},{round(lon, 4)}"
+def receipt_currency(rows: list[dict[str, Any]], shop: str, date: str) -> str:
+    """The currency of *shop*'s receipt on *date*, from all its ledger rows.
 
-
-def nominatim_reverse(lat: float, lon: float) -> dict[str, Any] | None:  # pragma: no cover - network
-    """Reverse-geocode (lat, lon) to an OSM object, cached. Returns {osm_type, osm_id, name}."""
-    cache: dict[str, Any] = {}
-    if OSM_CACHE.exists():
-        cache = json.loads(OSM_CACHE.read_text(encoding="utf-8"))
-    key = _osm_cache_key(lat, lon)
-    if key in cache:
-        return cache[key]
-    resp = requests.get(
-        "https://nominatim.openstreetmap.org/reverse",
-        params={"lat": lat, "lon": lon, "format": "jsonv2"},
-        headers={"User-Agent": USER_AGENT},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    d = resp.json()
-    if "osm_id" not in d:
-        return None
-    result = {
-        "osm_type": d["osm_type"].upper(),
-        "osm_id": d["osm_id"],
-        "name": d.get("name") or d.get("display_name", "")[:60],
-    }
-    cache[key] = result
-    OSM_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    OSM_CACHE.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
-    return result
-
-
-SHOP_OSM = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "inventory-md" / "shop-osm.json"
-
-
-def _parse_osm(spec: str) -> tuple[str, int]:
-    """Parse a 'TYPE:ID' OSM spec, e.g. 'WAY:1016681733' -> ('WAY', 1016681733)."""
-    kind, _, num = spec.partition(":")
-    kind = kind.strip().upper()
-    if kind not in ("NODE", "WAY", "RELATION") or not num.strip().isdigit():
-        raise ValueError(f"bad --osm {spec!r}; expected NODE|WAY|RELATION:<id>")
-    return kind, int(num)
+    Category prices and the proof have no EAN row of their own to take it from,
+    and a silent EUR default publishes a NOK or RON receipt in the wrong
+    currency.
+    """
+    currencies = {r.get("currency") or "EUR" for r in rows if r.get("shop") == shop and r.get("date") == date}
+    if not currencies:
+        raise ValueError(f"no ledger rows for shop={shop!r} date={date!r}, so its currency is unknown")
+    if len(currencies) > 1:
+        raise ValueError(f"shop={shop!r} date={date!r} has several currencies in the ledger: {sorted(currencies)}")
+    return currencies.pop()
 
 
 def _resolve_location(shop: str, osm_arg: str | None) -> tuple[str, int]:
-    """Resolve a shop's confirmed OSM location, caching it per shop.
+    """Resolve a shop's confirmed OSM location from the branch-keyed cache.
 
     Explicit ``--osm`` wins and is persisted; otherwise a previously-confirmed
     entry in ``shop-osm.json`` is used. Never auto-geocodes (receipt photos may
-    be taken away from the shop).
+    be taken away from the shop). The cache itself, and the guards on writing to
+    it, live in :mod:`purchase_pipeline.shop_osm`.
     """
-    table: dict[str, Any] = json.loads(SHOP_OSM.read_text(encoding="utf-8")) if SHOP_OSM.exists() else {}
     if osm_arg:
-        kind, num = _parse_osm(osm_arg)
-        table[shop] = {"osm_type": kind, "osm_id": num}
-        SHOP_OSM.parent.mkdir(parents=True, exist_ok=True)
-        SHOP_OSM.write_text(json.dumps(table, ensure_ascii=False, indent=2), encoding="utf-8")
+        kind, num = parse_osm_spec(osm_arg)
+        # force: --osm is an explicit human confirmation, so it may repoint a key
+        # and may name a single-word shop. shop_osm's guards exist to stop a
+        # *derived* key being written silently; this one was typed.
+        save_entry(shop, kind, num, force=True)
         return kind, num
-    if shop in table:
-        return table[shop]["osm_type"], table[shop]["osm_id"]
+    hit = match_shop_osm(load_cache(), shop)
+    if hit:
+        return hit["osm_type"], hit["osm_id"]
+    cands = shop_osm_candidates(load_cache(), shop)
+    hint = f" Cached branches that look similar: {', '.join(cands)}." if cands else ""
     sys.exit(
-        f"No confirmed OSM location for {shop!r}. Find it on openstreetmap.org and re-run with "
-        f"--osm TYPE:ID (e.g. --osm WAY:1016681733), or --suggest-from-photo PHOTO for a hint."
+        f"No confirmed OSM location for {shop!r}.{hint} Find it with "
+        f"`osm-resolve --lat LAT --lon LON --name {shop!r}`, confirm it in the browser, and re-run "
+        f"with --osm TYPE:ID."
     )
 
 
@@ -211,7 +192,10 @@ def main() -> None:  # pragma: no cover - network / CLI wiring
     parser.add_argument("--osm", help="Shop location as TYPE:ID (e.g. WAY:1016681733); confirmed & cached per shop")
     parser.add_argument("--proof-id", type=int, default=None, help="Reuse an already-uploaded proof id (skip upload)")
     parser.add_argument(
-        "--suggest-from-photo", type=Path, default=None, help="Print an OSM suggestion from a photo's GPS, then exit"
+        "--coords-from-photo",
+        type=Path,
+        default=None,
+        help="Print a photo's EXIF GPS as an osm-resolve invocation, then exit",
     )
     parser.add_argument("--ledger", type=Path, default=Path.home() / "regnskap" / "purchases.jsonl")
     parser.add_argument(
@@ -235,15 +219,16 @@ def main() -> None:  # pragma: no cover - network / CLI wiring
     parser.add_argument("--commit", action="store_true")
     args = parser.parse_args()
 
-    # --suggest-from-photo: standalone mode — no shop/date/proof needed.
+    # --coords-from-photo: standalone mode — no shop/date/proof needed.
     # (Unreliable: the photo may be taken away from the shop — confirm before use.)
-    if args.suggest_from_photo:
-        latlon = photo_latlon(args.suggest_from_photo)
+    if args.coords_from_photo:
+        latlon = photo_latlon(args.coords_from_photo)
         if not latlon:
-            sys.exit(f"No GPS in {args.suggest_from_photo}")
-        hint = nominatim_reverse(*latlon)
-        print(f"Suggestion from {latlon}: {hint}")
-        print("Verify it's the right shop, then re-run with --osm TYPE:ID")
+            sys.exit(f"No GPS in {args.coords_from_photo}")
+        lat, lon = latlon
+        print(f"EXIF GPS: {lat},{lon}")
+        print(f"  osm-resolve --lat {lat} --lon {lon} --name 'SHOP'")
+        print("Confirm the candidate in the browser, then re-run this with --osm TYPE:ID")
         return
 
     # Validate args required for normal publish flow.
@@ -255,11 +240,15 @@ def main() -> None:  # pragma: no cover - network / CLI wiring
     category_specs = [_parse_category_price(s) for s in args.category_price]
 
     base = BASES[args.env]
-    rows = [json.loads(line) for line in args.ledger.read_text(encoding="utf-8").splitlines() if line.strip()]
+    ledger = [json.loads(line) for line in args.ledger.read_text(encoding="utf-8").splitlines() if line.strip()]
+    try:
+        currency = receipt_currency(ledger, args.shop, args.date)
+    except ValueError as exc:
+        sys.exit(str(exc))
     rows = (
         []
         if args.no_products
-        else [r for r in rows if r.get("shop") == args.shop and r.get("date") == args.date and r.get("ean")]
+        else [r for r in ledger if r.get("shop") == args.shop and r.get("date") == args.date and r.get("ean")]
     )
     if not rows and not category_specs:
         sys.exit(f"Nothing to publish for shop={args.shop!r} date={args.date!r} (no EAN rows, no --category-price)")
@@ -277,7 +266,7 @@ def main() -> None:  # pragma: no cover - network / CLI wiring
     # The proof carries the receipt's own currency/date/location; Open Prices
     # reconciles each price to its proof, so a proof missing these blanks out the
     # prices' currency/date in the UI. Stamp them at upload time.
-    proof_currency = (rows[0].get("currency") if rows else None) or "EUR"
+    proof_currency = currency
 
     proof_id = args.proof_id
     if args.commit and proof_id is None:
@@ -323,7 +312,9 @@ def main() -> None:  # pragma: no cover - network / CLI wiring
         )
 
     for spec in category_specs:
-        payload = build_category_price(spec, proof_id=proof_id or 0, osm_type=osm_type, osm_id=osm_id, date=args.date)
+        payload = build_category_price(
+            spec, proof_id=proof_id or 0, osm_type=osm_type, osm_id=osm_id, date=args.date, currency=currency
+        )
         disc = (
             f"  [discounted from {payload['price_without_discount']} {payload['discount_type']}]"
             if payload.get("price_is_discounted")

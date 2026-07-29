@@ -6,9 +6,9 @@ from purchase_pipeline.openprices_publish import (
     _dms_to_deg,
     _parse_category_price,
     _parse_discount,
-    _parse_osm,
     build_category_price,
     build_price,
+    receipt_currency,
 )
 
 
@@ -66,20 +66,8 @@ class TestDiscount:
         assert "price_is_discounted" not in p
 
 
-class TestParseOsm:
-    def test_way(self):
-        assert _parse_osm("WAY:1016681733") == ("WAY", 1016681733)
-
-    def test_lowercase_node(self):
-        assert _parse_osm("node:42") == ("NODE", 42)
-
-    def test_bad_type(self):
-        with pytest.raises(ValueError):
-            _parse_osm("PLACE:1")
-
-    def test_missing_id(self):
-        with pytest.raises(ValueError):
-            _parse_osm("WAY:")
+# The TYPE:ID parser moved to shop_osm (one cache, one parser) — see
+# tests/test_shop_osm.py::TestParseOsmSpec.
 
 
 class TestDmsToDeg:
@@ -123,3 +111,25 @@ class TestBuildPrice:
     def test_ean_coerced_to_str(self):
         row = {**self.ROW, "ean": 3800856095703}
         assert build_price(row, proof_id=1, osm_type="NODE", osm_id=1)["product_code"] == "3800856095703"
+
+
+class TestReceiptCurrency:
+    """Category prices and the proof carry the receipt's currency, which is
+    only known from the ledger — including rows without an EAN."""
+
+    ROWS = [
+        {"shop": "Holdbart Oslo", "date": "2026-08-29", "currency": "NOK", "name": "ice cream"},
+        {"shop": "Odesos Varna", "date": "2026-09-03", "currency": "EUR", "ean": "3800207823016"},
+    ]
+
+    def test_from_a_row_without_ean(self):
+        assert receipt_currency(self.ROWS, "Holdbart Oslo", "2026-08-29") == "NOK"
+
+    def test_no_rows_for_the_shop_day_is_an_error(self):
+        with pytest.raises(ValueError, match="no ledger rows"):
+            receipt_currency(self.ROWS, "Holdbart Oslo", "2026-08-30")
+
+    def test_mixed_currencies_is_an_error(self):
+        rows = [*self.ROWS, {"shop": "Holdbart Oslo", "date": "2026-08-29", "currency": "EUR"}]
+        with pytest.raises(ValueError, match="several currencies"):
+            receipt_currency(rows, "Holdbart Oslo", "2026-08-29")

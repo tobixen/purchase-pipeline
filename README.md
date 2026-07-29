@@ -54,6 +54,7 @@ Every module is a console script; none of them need a path.
 | `staging-to-inventory` | write reviewed staging rows into `inventory.md` |
 | `tingbok-push` | push reviewed price/receipt-name observations to tingbok |
 | `off-upload` | create missing Open Food Facts products |
+| `osm-resolve` | find a shop's OSM object from surveyed coordinates (Overpass), and cache the confirmed pick per branch |
 | `openprices-publish` / `openprices-auth` | publish prices to Open Prices / mint a token |
 | `check-grocery-ledger` | the diary↔ledger coverage gate (was `~/bin/check-grocery-ledger`) |
 
@@ -80,6 +81,31 @@ Two guards protect that gate, both earned from real mistakes:
 An entry exists in the registry only for a chain whose receipt has actually been
 read, and must carry a `source` naming it. An unrecorded chain prints as
 unrecorded — a guessed layout gets trusted exactly like a known one.
+
+## A price points at one store, not at a chain
+
+An Open Prices row names an OSM object, so the shop→OSM cache
+(`~/.config/inventory-md/shop-osm.json`) is keyed by **branch** —
+`Billa Sozopol ул. Републиканска 5`, never `Billa`. `shop_osm` is the only module
+that knows this, and it guards the key from both ends: `match_shop_osm` resolves
+an exact key and nothing else, and `save_entry` refuses to *store* a bare chain
+name, since such a key would then match exactly and resolve silently to whichever
+branch was saved first. Both guards exist because a 2026-07-24 trip to Billa
+**Sozopol** asked for `"Billa"`, found the single cached Billa, and confidently
+returned the **Varna** branch.
+
+`osm-resolve` fills that cache. It asks Overpass what is *within a radius* of a
+surveyed point, ranks the answers by name similarity (across `name`, `name:en`,
+`brand`, … — a Bulgarian shopfront and a Bulgarian receipt may disagree about
+script), and prints each with a map link. Confirming a candidate is a human act
+performed in a browser; the command only records the outcome, when given
+`--save-as KEY --pick TYPE:ID`. It replaced a Nominatim reverse-geocode, which
+answers a different question — "what address is this point" — and returned a
+neighbouring wine shop for a fish shop's coordinates.
+
+Coordinates come from a survey or a photo's GPS
+(`openprices-publish --coords-from-photo`). Neither this tool nor an agent driving
+it may invent them.
 
 ## Relationship to inventory-md
 

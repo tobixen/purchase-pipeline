@@ -30,51 +30,21 @@ import sys
 from pathlib import Path
 from typing import Any
 
-DEFAULT_OSM_CACHE = Path.home() / ".config" / "inventory-md" / "shop-osm.json"
+from purchase_pipeline.shop_osm import SHOP_OSM_PATH as DEFAULT_OSM_CACHE
+from purchase_pipeline.shop_osm import load_cache as load_osm_cache
+from purchase_pipeline.shop_osm import match_shop_osm, shop_osm_candidates
 
-
-def load_osm_cache(path: Path) -> dict[str, Any]:
-    """Load the shop→OSM cache, returning ``{}`` if it does not exist."""
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-def shop_osm_candidates(cache: dict[str, Any], shop: str) -> list[str]:
-    """Cache keys whose name overlaps *shop* by substring (either direction)."""
-    if not shop:
-        return []
-    want = shop.casefold()
-    return [key for key in cache if want in key.casefold() or key.casefold() in want]
-
-
-def match_shop_osm(cache: dict[str, Any], shop: str) -> dict[str, Any] | None:
-    """Find the cached OSM entry keyed exactly by *shop* (case-insensitive).
-
-    Nothing else resolves. The cache is **branch-keyed** (``"Billa Varna ул.
-    Андрей Сахаров"``), because an Open Prices price has to point at one real
-    store — so a bare chain name like ``"Billa"`` is not an under-specified key,
-    it is not a key at all.
-
-    This used to fall back to an unambiguous substring match, on the theory that
-    a single cached ``"Lidl Varna"`` makes ``"lidl"`` unambiguous. It does not:
-    uniqueness in the cache is a fact about what has been visited before, not
-    about which shop the caller means. On 2026-07-24 a trip to Billa **Sozopol**
-    asked for ``"Billa"``, found the one cached Billa, and confidently returned
-    the **Varna** branch's WAY:1016681733 — a wrong location, published
-    silently, with no ambiguity for the old guard to trip on.
-
-    Callers that get ``None`` should offer :func:`shop_osm_candidates` so the
-    human can pick the exact branch key.
-    """
-    if not shop:
-        return None
-    want = shop.strip().casefold()
-    for key, val in cache.items():
-        if key.strip().casefold() == want:
-            return val
-    return None
+__all__ = [
+    "DEFAULT_OSM_CACHE",
+    "find_staging_files",
+    "grep_diary_lines",
+    "load_osm_cache",
+    "match_shop_osm",
+    "read_diary_text",
+    "recent_ledger_rows",
+    "shop_of",
+    "shop_osm_candidates",
+]
 
 
 def shop_of(path: Path) -> str | None:
@@ -196,11 +166,15 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"    - {c}")
                 print(
                     "  The cache is keyed by branch, so re-run with the exact name above — but only after "
-                    "checking it is the branch you actually visited. If it is a new branch of a known chain, "
-                    "pass --osm TYPE:ID to openprices_publish once (it caches under the name you give)."
+                    "checking it is the branch you actually visited. A new branch of a known chain is a new "
+                    "key: find it with `osm-resolve --lat LAT --lon LON --name NAME`."
                 )
             else:
-                print(f"  not cached for '{args.shop}' — pass --osm TYPE:ID to openprices_publish once (it caches).")
+                print(
+                    f"  not cached for '{args.shop}' — find the shop's OSM object with "
+                    f"`osm-resolve --lat LAT --lon LON --name '{args.shop}'`, confirm it in the browser, "
+                    f"then record it with `--save-as 'CHAIN TOWN STREET' --pick TYPE:ID`."
+                )
     else:
         cache = load_osm_cache(args.osm_cache)
         for k, v in cache.items():

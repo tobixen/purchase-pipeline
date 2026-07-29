@@ -1,8 +1,8 @@
 # TODO — purchase-pipeline
 
-**Tasks 0, 1 and 2 are done** (2026-07-25/27) — kept below with a `DONE` note
+**Tasks 0, 1, 2 and 3 are done** (2026-07-25/29) — kept below with a `DONE` note
 rather than deleted, because each records a real regression case worth keeping.
-Tasks 3, 4 and 5 remain.
+Tasks 4 and 5 remain, and task 4's motivating case has evaporated (see there).
 
 Tasks were ordered: **task 0 first**, the rest independent of each other. Every task assumes the project conventions in `~/.claude-personal/CLAUDE.md`:
 write the failing test first, then implement; type-annotate public APIs; update
@@ -45,10 +45,15 @@ Still open from this task:
 
 * `~/.claude/skills/` is registered in `~/.claude` as a gitlink (mode 160000)
   with no `.gitmodules` and no repo inside, so the personal skill edits there are
-  unversioned. Worth fixing before relying on them.
-* `check_grocery_ledger` crashes on a directory `--diary` (`IsADirectoryError`),
-  while `shopping_context.read_diary_text` handles exactly that. Now that both
-  live here, the second should just use the first.
+  unversioned. Worth fixing before relying on them. **This is the only item left
+  in this file that is not about code in this repository.**
+
+Done from this task (2026-07-29):
+
+* `check_grocery_ledger` no longer crashes on a directory `--diary`
+  (`IsADirectoryError`) — it reads through `shopping_context.read_diary_text`, so
+  `--diary` means the same thing in both commands. `main()` also takes `argv` now,
+  which is what let the whole module get a test file instead of none.
 
 ---
 
@@ -145,24 +150,43 @@ summed to 18.12 exactly under the correct reading and not under the naive one.
 
 ---
 
-## 3. `osm_resolve.py` — find an existing shop's OSM object
+## 3. `osm_resolve.py` — find an existing shop's OSM object — **DONE**
 
-Read-only, no auth, cannot damage anything. Build this before task 4.
+Done: `src/purchase_pipeline/osm_resolve.py`, the `osm-resolve` console script.
+Overpass radius query, ranked by name similarity, printed with map links;
+`--save-as KEY --pick TYPE:ID` records a human's confirmation and nothing else
+writes. Verified against the live API on the 2026-07-24 Sozopol coordinates.
 
-```
-osm_resolve.py --lat 42.41934 --lon 27.69215 --name "Billa" [--radius 50]
-```
+Three things came out differently from the sketch below, all worth knowing:
 
-Queries **Overpass** for POIs within `--radius` metres (configurable, default
-~50 m), ranks candidates by name similarity, prints each with an
-`openstreetmap.org` link for eyeballing, and on confirmation writes the pick into
-`~/.config/inventory-md/shop-osm.json` under a branch-specific key.
+* **The cache moved into its own module.** `shop_osm.py` now owns the path, the
+  reader and the writer; `shopping_context` and `openprices_publish` had a copy
+  of the path each, and disagreed about `XDG_CONFIG_HOME`.
+* **The write is guarded from the other end too.** `save_entry` refuses a bare
+  chain key (`Billa`), because task 1 only hardened the *matcher*: a chain-only
+  key in the cache matches exactly and so resolves silently, which is that bug
+  reintroduced through the cache. It also refuses to repoint an existing key, and
+  refuses a `--pick` the query never returned (a typo is not a confirmation).
+* **Nominatim is gone rather than merely deprecated.** Leaving the wrong tool
+  next to the right one is a trap. `openprices-publish --suggest-from-photo`
+  became `--coords-from-photo`, which prints the EXIF GPS as an `osm-resolve`
+  invocation and guesses no shop; `nominatim_reverse` and its
+  `~/.cache/inventory-md/osm-geocode-cache.json` are deleted (the stale cache
+  file can be removed by hand, nothing reads it).
 
-Motivation: on 2026-07-24 the actual friction was not mapping a shop, it was
-*finding the node id of a shop that already existed*. That took four hand-rolled
-Nominatim round-trips. Nominatim is also the wrong tool — it is a geocoder, and
-reverse-geocoding the fish shop's coordinates returned a neighbouring wine shop.
-Overpass with a radius is the right query.
+Name ranking scores across `name`, `name:en`, `int_name`, `official_name`,
+`alt_name`, `brand` and `operator`: the fish shop's `name` is Cyrillic
+(`магазин за риба`) and its Latin form only ever appears in `name:en`, so scoring
+`name` alone would have ranked the correct answer at ~0.
+
+Unnamed POIs are ranked last but never filtered out — an unnamed `shop=seafood`
+five metres away is precisely what task 4 must see. `amenity` values that cannot
+be a shop (bench, waste basket, parking, …) *are* filtered, or a 50 m radius in a
+town centre is mostly street furniture.
+
+Original motivation, still accurate: on 2026-07-24 the friction was not mapping a
+shop, it was *finding the node id of a shop that already existed*, and that took
+four hand-rolled Nominatim round-trips.
 
 ---
 
@@ -190,9 +214,36 @@ Three constraints are **requirements, not nice-to-haves**:
   because it is a human survey with a scripted upload. That stops being true the
   moment it is pointed at a batch — so don't add a batch mode.
 
-Pending real-world case: Sozopol Fish (магазин за риба) at
-`42.41934022085787, 27.692148284820842`, unmapped, which is why the 2026-07-24
-mussel price could not be published to Open Prices.
+**The motivating case is gone.** Running the new `osm-resolve` against those
+coordinates on 2026-07-29 found Sozopol Fish already mapped, 18 m away:
+
+```
+osm-resolve --lat 42.41934022085787 --lon 27.692148284820842 --name "Sozopol Fish" --radius 60
+  1. score 1.00  NODE:14048113335  18 m  Sozopol Fish  [shop=seafood]
+  2. score 0.52   WAY:301280221    10 m  Sozopol marketplace  [amenity=marketplace]
+  4. score 0.11  NODE:5002039921   20 m  Грив-56  [shop=wine]
+```
+
+Somebody mapped it between 2026-07-24 and now. (Candidate 4 is the wine shop that
+Nominatim used to return for these coordinates — the reproducer for task 3's
+"a geocoder answers the wrong question", now visible as a ranked candidate that
+scores 0.11 instead of being *the* answer.)
+
+So the 2026-07-24 mussel price can be published today with nothing more than:
+
+```
+osm-resolve --save-as "Sozopol Fish <street>" --pick NODE:14048113335
+```
+
+That removes the only concrete case this task had. Which raises the honest
+question of whether to build it at all: the requirements below (mandatory
+duplicate check, never generate data, honest changesets, no batch mode) are
+sound, but writing an OSM upload tool needs OAuth setup, `osmapi`, and careful
+review, and there is now **no** shop waiting for it. Recommendation: leave this
+open and unbuilt until an actually-unmapped shop turns up. `osm-resolve` already
+answers "is it mapped?" in one command, which is the question that was really
+being asked on 2026-07-24 — and when a genuinely unmapped shop does appear, a
+one-off edit in iD or Vespucci is likely cheaper than this tool.
 
 ---
 

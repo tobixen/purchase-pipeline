@@ -288,15 +288,30 @@ openprices-publish --shop "Shop" --date YYYY-MM-DD \
 # barcodeless items as CATEGORY prices:
     --no-products --category-price "en:baguettes=0.17,was=0.45,type=SALE"
 ```
-Shop location is a **confirmed** OSM object (cached per shop), never auto-geocoded
-— receipt photos are often taken away from the shop. To get that confirmation
-cheaply, give the user the object's map link to eyeball —
-`https://www.openstreetmap.org/node/NNN` (or `/way/NNN`) — e.g. open it with
-`xdg-open`; a Nominatim name match alone is not confirmation (chains have many
-branches, and OSM's mapped address may differ from the receipt's legal address
-even for the right store). PRODUCT prices must not set `price_per`. Both OFF
-and Open Prices are **public** — treat as irreversible-ish (Open Prices rows
-are deletable; you own them).
+Shop location is a **confirmed** OSM object (cached per branch), never
+auto-geocoded — receipt photos are often taken away from the shop.
+
+To find the object, don't hand-roll geocoder round-trips — that is what
+`osm-resolve` is for:
+```bash
+osm-resolve --lat LAT --lon LON --name "SHOP" [--radius 50]     # ranked candidates + map links
+osm-resolve --save-as "CHAIN TOWN STREET" --pick TYPE:ID        # after the human confirms
+openprices-publish --coords-from-photo PHOTO                    # EXIF GPS → the command above
+```
+It queries Overpass for what is *at* a point. A geocoder answers a different
+question — "what address is this point" — and on 2026-07-24 reverse-geocoding the
+Sozopol fish shop returned the wine shop 20 m away.
+
+Confirmation is the human's, in a browser: hand over the printed
+`https://www.openstreetmap.org/node/NNN` link (e.g. via `xdg-open`) and wait. A
+name match is not confirmation — chains have many branches, and OSM's mapped
+address may differ from the receipt's legal address even for the right store.
+Cache keys must name a branch (`Billa Sozopol ул. Републиканска 5`), not a chain;
+`osm-resolve` refuses a one-word key, because a chain-only key would then resolve
+exactly and silently to whichever branch was saved first.
+
+PRODUCT prices must not set `price_per`. Both OFF and Open Prices are **public** —
+treat as irreversible-ish (Open Prices rows are deletable; you own them).
 
 ## Queries
 
@@ -325,6 +340,7 @@ inventory's business; deciding what a purchase *means* is not.
 | `staging-to-inventory` | purchase-pipeline | write reviewed staging rows into `inventory.md` |
 | `tingbok-push` | purchase-pipeline | push reviewed price/receipt-name observations to tingbok |
 | `off-upload` | purchase-pipeline | create missing OFF products |
+| `osm-resolve` | purchase-pipeline | find a shop's OSM object by coordinates (Overpass), cache the confirmed pick |
 | `openprices-publish` / `openprices-auth` | purchase-pipeline | publish prices / mint token |
 | `check-grocery-ledger` | purchase-pipeline | diary↔ledger coverage gate |
 | `~/inventory-md/scripts/extract_barcodes.py --best-before` | inventory-md | barcodes + best-before OCR per photo |
@@ -376,7 +392,13 @@ This skill and the scripts are quite fresh.  For each run, try to pinpoint probl
     match, which was not enough: with only one Billa cached there is nothing to be
     ambiguous about, so a 2026-07-24 trip to Billa Sozopol resolved to the Varna branch.
   * When caching a new shop, key it by branch (shop + street), and confirm the OSM object
-    is that exact store before publishing Open Prices.
+    is that exact store before publishing Open Prices. `osm-resolve --save-as` now
+    enforces the branch key, and refuses a one-word one.
+  * Also done (2026-07-29): `osm-resolve` finds the object from coordinates via
+    Overpass, so finding the node id of an **existing** shop is one command rather
+    than four hand-rolled Nominatim round-trips. The Nominatim reverse-geocode is
+    gone: `openprices-publish --coords-from-photo` now prints the EXIF GPS as an
+    `osm-resolve` invocation instead of guessing a shop from an address.
 * Fixed 2026-07-09 (Бурлекс run friction):
   * `add_item` crashed on YAML-native dates (`bb: 2026-07-12` → `datetime.date`) —
     now coerced; staging bb values no longer need quoting.
