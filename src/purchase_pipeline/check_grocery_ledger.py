@@ -39,6 +39,8 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from purchase_pipeline.shopping_context import read_diary_text
+
 # Expense classes that MUST carry a ledger entry.
 REQUIRE_LEDGER = {"groceries", "equipment"}
 
@@ -65,10 +67,17 @@ def parse_amount(raw: str) -> float | None:
 
 
 def parse_diary(path: Path) -> list[dict]:
-    """Extract expense lines with the date of the enclosing day header."""
+    """Extract expense lines with the date of the enclosing day header.
+
+    *path* may be a diary file or a directory of them — the reading is
+    :func:`shopping_context.read_diary_text`, so ``--diary`` means the same
+    thing here as it does for ``shopping-context``. Two commands in one project
+    disagreeing about that is how this crashed with ``IsADirectoryError`` on
+    ``--diary ~/solveig`` while its sibling handled the same argument fine.
+    """
     expenses: list[dict] = []
     current_date: str | None = None
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in read_diary_text(path).splitlines():
         if _HEADER_RE.match(line):
             m = _DATE_RE.search(line)
             if m:
@@ -137,9 +146,9 @@ def is_covered(exp: dict, by_date: dict[str, list[int]]) -> bool:
     return any(abs(r - target) <= tol for r in reachable)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--diary", type=Path, default=DEFAULT_DIARY)
+    ap.add_argument("--diary", type=Path, default=DEFAULT_DIARY, help="Diary file, or a directory of diary-md files")
     ap.add_argument("--ledger", type=Path, default=DEFAULT_LEDGER)
     ap.add_argument(
         "--require",
@@ -154,7 +163,7 @@ def main() -> int:
         "without itemisation)",
     )
     ap.add_argument("-q", "--quiet", action="store_true", help="only print problems")
-    ns = ap.parse_args()
+    ns = ap.parse_args(argv)
 
     require = {t.strip().lower() for t in ns.require.split(",") if t.strip()}
     expenses = parse_diary(ns.diary)
