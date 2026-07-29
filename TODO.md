@@ -1,8 +1,9 @@
 # TODO — purchase-pipeline
 
-**Tasks 0, 1, 2 and 3 are done** (2026-07-25/29) — kept below with a `DONE` note
-rather than deleted, because each records a real regression case worth keeping.
-Tasks 4 and 5 remain, and task 4's motivating case has evaporated (see there).
+**Tasks 0–4 are done** (2026-07-25/29) — kept below with a `DONE` note rather
+than deleted, because each records a real regression case worth keeping. Only
+task 5 remains. Task 4's `--commit` path is written and tested but has never run
+against the live API; see the note there.
 
 Tasks were ordered: **task 0 first**, the rest independent of each other. Every task assumes the project conventions in `~/.claude-personal/CLAUDE.md`:
 write the failing test first, then implement; type-annotate public APIs; update
@@ -190,11 +191,27 @@ four hand-rolled Nominatim round-trips.
 
 ---
 
-## 4. `osm_add_shop.py` — create a surveyed shop node
+## 4. `osm_add_shop.py` — create a surveyed shop node — **DONE**
 
-Depends on task 3 (reuses its duplicate query) and on a one-time
-`osm_auth.py` (OAuth 2.0, mirroring `op_auth.py` (now the `openprices-auth` command)). The `osmapi` package handles
-the changeset dance.
+Done: `src/purchase_pipeline/osm_add_shop.py` (`osm-add-shop`) and
+`src/purchase_pipeline/osm_auth.py` (`osm-auth`, OAuth 2.0 + PKCE with the
+out-of-band redirect, since a CLI has no callback server and OSM has no password
+grant). `osmapi` handles the changeset dance and is in the `publish` extra.
+
+All three constraints are implemented, and the duplicate check got a fourth guard
+that was not in the sketch — see "Two live findings" below. The waiver is
+per-object: there is deliberately **no `--force`**, only
+`--not-a-duplicate-of TYPE:ID` repeated once per blocker, because an agent cannot
+honestly produce those flags for objects it has not looked at.
+
+**Not verified:** the `--commit` path has never run. It needs an OAuth
+application registered by tobixen (that registration names *them* as the editor,
+so it is not mine to do) and, more to the point, a genuinely unmapped shop. Every
+other path is covered by tests and was rehearsed against live Overpass. When the
+first real shop turns up, rehearse against the dev server first:
+`--api https://master.apis.dev.openstreetmap.org`.
+
+Original notes follow.
 
 ```
 osm_add_shop.py --lat 42.41934 --lon 27.69215 --name "Sozopol Fish" \
@@ -214,8 +231,9 @@ Three constraints are **requirements, not nice-to-haves**:
   because it is a human survey with a scripted upload. That stops being true the
   moment it is pointed at a batch — so don't add a batch mode.
 
-**The motivating case is gone.** Running the new `osm-resolve` against those
-coordinates on 2026-07-29 found Sozopol Fish already mapped, 18 m away:
+**The Sozopol case is closed, but not by this task going away.** Running the new
+`osm-resolve` against those coordinates on 2026-07-29 finds Sozopol Fish mapped,
+18 m out:
 
 ```
 osm-resolve --lat 42.41934022085787 --lon 27.692148284820842 --name "Sozopol Fish" --radius 60
@@ -224,26 +242,55 @@ osm-resolve --lat 42.41934022085787 --lon 27.692148284820842 --name "Sozopol Fis
   4. score 0.11  NODE:5002039921   20 m  Грив-56  [shop=wine]
 ```
 
-Somebody mapped it between 2026-07-24 and now. (Candidate 4 is the wine shop that
-Nominatim used to return for these coordinates — the reproducer for task 3's
-"a geocoder answers the wrong question", now visible as a ranked candidate that
-scores 0.11 instead of being *the* answer.)
+tobixen added it **by hand**, and then asked for these tools precisely so as not
+to have to do that again. So the requirement stands; only the test fixture is
+gone. Do not read "already mapped" as "not needed" — that mistake was made once
+in this file already.
 
-So the 2026-07-24 mussel price can be published today with nothing more than:
+(Candidate 4 is the wine shop Nominatim used to return for these coordinates —
+task 3's reproducer, now a ranked candidate scoring 0.11 rather than being *the*
+answer. Candidate 2 matters for this task: a marketplace way enclosing the shop
+means the duplicate check has to distinguish "a POI of the same kind is here"
+from "this shop is here".)
+
+The 2026-07-24 mussel price is publishable today with:
 
 ```
 osm-resolve --save-as "Sozopol Fish <street>" --pick NODE:14048113335
 ```
 
-That removes the only concrete case this task had. Which raises the honest
-question of whether to build it at all: the requirements below (mandatory
-duplicate check, never generate data, honest changesets, no batch mode) are
-sound, but writing an OSM upload tool needs OAuth setup, `osmapi`, and careful
-review, and there is now **no** shop waiting for it. Recommendation: leave this
-open and unbuilt until an actually-unmapped shop turns up. `osm-resolve` already
-answers "is it mapped?" in one command, which is the question that was really
-being asked on 2026-07-24 — and when a genuinely unmapped shop does appear, a
-one-off edit in iD or Vespucci is likely cheaper than this tool.
+### Two live findings, both from actually running it (2026-07-29)
+
+Neither would have shown up in unit tests, and both are now regression-tested.
+
+**1. Overpass fails often, and "could not check" must never read as "clear".**
+The very first live run got `HTTP 504 Gateway Timeout` and died with a traceback.
+It happened to be safe — the exception aborted the run — but by accident rather
+than by design, which is not a guard. `overpass_query` now raises
+`OverpassError` for transport/status/parse failures, distinct from an empty
+answer, and both `osm-resolve` and `osm-add-shop` refuse cleanly on it. The main
+instance 504'd repeatedly over ~20 minutes, so this is a normal path, not an
+exotic one.
+
+**2. A regional-extract mirror silently disables the duplicate check.** Added
+`--overpass-endpoint` as a 504 workaround, tried
+`https://overpass.osm.ch/api/interpreter`, and it reported a **clear site** for
+the Sozopol coordinates — where a mapped `shop=seafood` sits 18 m away. It is a
+Switzerland-only extract: `[]` for Bulgaria, full data for Zürich. So the flag
+introduced to work around finding #1 would have waved through exactly the damage
+this whole task exists to prevent.
+
+An empty answer is now corroborated before it is trusted: `has_coverage()` asks
+whether the endpoint holds any `highway` way within 1 km, and a no refuses the
+run. Roads rather than POIs — somewhere with a shop has a road within a
+kilometre, but may legitimately have no *mapped shop*. The probe only fires when
+the duplicate query came back empty; if it returned POIs, coverage is self-evident.
+
+The general lesson is worth keeping beyond this task: **an empty result is not
+evidence of absence until the source is known to cover the question.** It is the
+same shape as the task-1 bug (one cached Billa is not evidence of being the right
+Billa) and the task-2 bug (a receipt that parses is not evidence of parsing
+correctly). Three for three, on this trip's worth of code.
 
 ---
 
@@ -261,3 +308,58 @@ that the runs had to be serialised by hand to avoid racing on `inventory.json`.
 
 Alternative or addition: `--no-validate`, so a caller can skip validation on all
 but the last file.
+
+---
+
+## 6. Script the Lidl+ shopping-history download
+
+Migrated from inventory-md's TODO on 2026-07-29: it was filed there as "the
+integration with the Lidl+ shopping history downloader should be scripted better
+and included in the inventory system", but a shop's receipt history is this
+project's business, not the inventory format's.
+
+`shop_import` and `ledger` both read `~/regnskap/lidl_receipts.json`
+(`shop_import --receipt`, `ledger lidl --receipt`), and nothing in either
+repository produces that file — it arrives by a manual, undocumented step. So the
+first task is to write down what that step currently is, before automating it.
+
+What "scripted better" should mean:
+
+- a command that fetches the history and writes/updates `lidl_receipts.json`
+- append rather than replace, so already-imported trips are not re-fetched and a
+  hand-corrected entry is not silently overwritten
+- record where each receipt came from, as the other importers already do via
+  `source`
+- credentials handled like the other authenticated integrations
+  (`openprices-auth`, `osm_auth.py`), never inline in a script
+
+Worth checking whether an existing library already does the Lidl Plus API
+(there are third-party clients) before writing a scraper.
+
+---
+
+## 7. Populate a staging file's `ean` + `bb` without human photo inspection
+
+Migrated from inventory-md's TODO on 2026-07-29, **split across both projects** —
+neither half delivers the goal alone, so this entry and its inventory-md
+counterpart cross-reference each other.
+
+Goal: the agent never has to open a product photo. A reviewed staging file should
+arrive with `ean` and `bb` already populated, and only genuinely unresolved items
+flagged for the user.
+
+This project's half is **association** — deciding which item an extracted code or
+date belongs to. `classify_photo_result()` in `shop_import.py` sorts an
+`extract_barcodes.py --json` result into barcode / expiry / label, and the pairing
+rule (a barcode photo with the expiry in that photo, or in the immediately
+following one) plus matching the pair to a receipt line lives here.
+
+inventory-md's half is **extraction** quality — best-before OCR against
+dot-matrix printer fonts, curved and foil surfaces, and low-contrast embossing.
+Tracked under "Best-before OCR is not reliable enough to skip reading photos" in
+`~/inventory-md/docs/TODO.md`. Orientation is already handled there.
+
+Note that inventory-md's extractor now emits `tag:TODO` review blocks for a
+conflicting barcode read and for a photo whose barcode is present but undecodable.
+Whatever consumes extractor output here has to route those to the reviewer rather
+than drop them or treat them as items.

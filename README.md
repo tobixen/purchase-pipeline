@@ -55,6 +55,7 @@ Every module is a console script; none of them need a path.
 | `tingbok-push` | push reviewed price/receipt-name observations to tingbok |
 | `off-upload` | create missing Open Food Facts products |
 | `osm-resolve` | find a shop's OSM object from surveyed coordinates (Overpass), and cache the confirmed pick per branch |
+| `osm-add-shop` / `osm-auth` | create one surveyed shop node in OpenStreetMap / mint the OSM token |
 | `openprices-publish` / `openprices-auth` | publish prices to Open Prices / mint a token |
 | `check-grocery-ledger` | the diary↔ledger coverage gate (was `~/bin/check-grocery-ledger`) |
 
@@ -106,6 +107,35 @@ neighbouring wine shop for a fish shop's coordinates.
 Coordinates come from a survey or a photo's GPS
 (`openprices-publish --coords-from-photo`). Neither this tool nor an agent driving
 it may invent them.
+
+## Adding a shop to the map is the one genuinely public write
+
+If `osm-resolve` finds nothing, the shop is unmapped and `osm-add-shop` creates
+**one** node from a survey. Everything else in this pipeline is private data or a
+reversible row you own; this is an edit to a shared database under the user's own
+name, so it carries stricter guards than anything else here:
+
+* **The duplicate check cannot be waived wholesale.** There is no `--force`. Each
+  blocking object must be named individually with `--not-a-duplicate-of TYPE:ID`,
+  which asserts you opened that link and it is a different business. An agent
+  cannot honestly produce those flags — it has not looked at anything.
+* **An empty answer is corroborated before it is trusted.** Many Overpass mirrors
+  are *regional extracts*, and one of those reports "nothing here" for the rest of
+  the planet — identical, to the caller, to a clear site. So when nothing is
+  found, the endpoint is asked whether it holds any road within a kilometre. Found
+  the hard way: `overpass.osm.ch` cheerfully returned `[]` for Sozopol.
+* **Coordinates need 5+ decimal places.** A rounded figure was typed or invented;
+  a GPS fix is not round.
+* **The changeset is honest** — `source=survey`,
+  `created_by=purchase-pipeline/osm_add_shop` — which keeps this inside the
+  [Automated Edits code of conduct](https://wiki.openstreetmap.org/wiki/Automated_Edits_code_of_conduct):
+  a human survey with a scripted upload. That stops being true the moment it is
+  pointed at a batch, so there is one shop per invocation and **no batch mode**.
+  Don't add one.
+
+Dry run by default. `osm-auth` mints the token once, requesting only `write_api`;
+registering the OAuth application is the user's act, since it names them as the
+editor.
 
 ## Relationship to inventory-md
 

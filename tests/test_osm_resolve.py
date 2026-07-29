@@ -205,6 +205,17 @@ class TestMain:
         assert "no poi found" in out.lower()
         assert "unmapped" in out.lower()
 
+    def test_an_overpass_failure_is_reported_not_raised(self, monkeypatch, capsys):
+        def _boom(*a, **k):
+            raise osm_resolve.OverpassError("HTTP 504 Gateway Timeout")
+
+        monkeypatch.setattr(osm_resolve, "overpass_query", _boom)
+        rc = main(["--lat", str(LAT), "--lon", str(LON), "--name", "Billa"])
+        out = capsys.readouterr().out
+        assert rc == 1
+        assert "504" in out
+        assert "Traceback" not in out
+
     def test_does_not_write_the_cache_without_being_told_to(self, monkeypatch, capsys, tmp_path):
         cache = tmp_path / "shop-osm.json"
         self._run(
@@ -312,3 +323,35 @@ class TestMain:
     def test_no_arguments_at_all_is_an_error(self, tmp_path):
         with pytest.raises(SystemExit):
             main(["--osm-cache", str(tmp_path / "c.json")])
+
+
+class TestOverpassQuery:
+    """The transport itself, with ``urlopen`` faked — still no network."""
+
+    def _answer(self, monkeypatch, payload: dict) -> None:
+        import io
+
+        class _Resp(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        body = json.dumps(payload).encode("utf-8")
+        monkeypatch.setattr(osm_resolve.urllib.request, "urlopen", lambda *a, **k: _Resp(body))
+
+    def test_returns_elements(self, monkeypatch):
+        self._answer(monkeypatch, {"elements": [{"type": "node", "id": 1}]})
+        assert osm_resolve.overpass_query("[out:json];") == [{"type": "node", "id": 1}]
+
+    def test_a_runtime_error_remark_is_a_failure_not_an_empty_answer(self, monkeypatch):
+        """Overpass answers HTTP 200 on a server-side timeout, with a remark and
+        no (or partial) elements. Read as "nothing mapped here", that would wave
+        osm-add-shop's duplicate check through."""
+        self._answer(
+            monkeypatch,
+            {"elements": [], "remark": 'runtime error: Query timed out in "query" at line 1 after 25 seconds.'},
+        )
+        with pytest.raises(osm_resolve.OverpassError, match="runtime error"):
+            osm_resolve.overpass_query("[out:json];")

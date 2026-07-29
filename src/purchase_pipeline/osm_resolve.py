@@ -37,6 +37,7 @@ import argparse
 import json
 import math
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
@@ -139,18 +140,70 @@ def build_query(lat: float, lon: float, radius_m: int = DEFAULT_RADIUS_M) -> str
     return f"[out:json][timeout:25];\n(\n{clauses}\n);\nout tags center;"
 
 
+class OverpassError(RuntimeError):
+    """The Overpass query did not produce an answer.
+
+    Distinct from "the answer was empty", and the distinction matters: callers
+    that use this query as a *duplicate check* must refuse to proceed on a
+    failure, where an empty answer means go ahead. Overpass is a free public
+    service and returns 429/504 under load often enough that this is a normal
+    path, not an exceptional one.
+    """
+
+
 def overpass_query(
     query: str, *, endpoint: str = OVERPASS_ENDPOINT, timeout: int = 60
 ) -> list[dict[str, Any]]:  # pragma: no cover - network
-    """POST *query* to Overpass and return its ``elements`` list."""
+    """POST *query* to Overpass and return its ``elements`` list.
+
+    Raises :class:`OverpassError` on any transport, status or parse failure,
+    and on a ``runtime error`` remark: Overpass answers HTTP 200 when a query
+    times out or runs out of memory server-side, with no or partial elements.
+    """
     request = urllib.request.Request(
         endpoint,
         data=urllib.parse.urlencode({"data": query}).encode("utf-8"),
         headers={"User-Agent": USER_AGENT},
     )
-    with urllib.request.urlopen(request, timeout=timeout) as resp:  # noqa: S310 - fixed https endpoint
-        payload = json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as resp:  # noqa: S310 - fixed https endpoint
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise OverpassError(f"HTTP {exc.code} {exc.reason} from {endpoint}") from exc
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise OverpassError(f"could not reach {endpoint}: {exc}") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise OverpassError(f"unparseable answer from {endpoint}: {exc}") from exc
+    remark = str(payload.get("remark") or "")
+    if "runtime error" in remark.lower():
+        raise OverpassError(f"{endpoint} gave up on the query: {remark}")
     return payload.get("elements", [])
+
+
+COVERAGE_RADIUS_M = 1000
+
+
+def build_coverage_query(lat: float, lon: float, radius_m: int = COVERAGE_RADIUS_M) -> str:
+    """Overpass QL asking whether the endpoint knows about (lat, lon) at all.
+
+    Roads, not POIs: somewhere reachable enough to have a shop has a highway
+    within a kilometre, while it may genuinely have no *mapped shop*. ``out ids``
+    with a count limit keeps this cheap — the answer only has to be non-empty.
+    """
+    return f'[out:json][timeout:25];way(around:{radius_m},{lat},{lon})["highway"];out ids 1;'
+
+
+def has_coverage(
+    lat: float, lon: float, *, endpoint: str = OVERPASS_ENDPOINT, timeout: int = 60, radius_m: int = COVERAGE_RADIUS_M
+) -> bool:
+    """Whether *endpoint*'s database contains anything near (lat, lon).
+
+    Overpass mirrors are often **regional extracts**, and one of those answers
+    "nothing here" for the whole rest of the planet — indistinguishable, to a
+    caller, from a genuinely empty area. Anything treating an empty result as
+    permission to act has to check this first.
+    """
+    return bool(overpass_query(build_coverage_query(lat, lon, radius_m), endpoint=endpoint, timeout=timeout))
 
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -306,9 +359,14 @@ def main(argv: list[str] | None = None) -> int:
 
     candidates: list[Candidate] = []
     if has_query:
-        elements = overpass_query(
-            build_query(args.lat, args.lon, args.radius), endpoint=args.endpoint, timeout=args.timeout
-        )
+        try:
+            elements = overpass_query(
+                build_query(args.lat, args.lon, args.radius), endpoint=args.endpoint, timeout=args.timeout
+            )
+        except OverpassError as exc:
+            print(f"❌ Overpass query failed: {exc}")
+            print("   It is a free public service and rate-limits under load; retry, or try --endpoint MIRROR.")
+            return 1
         candidates = rank_candidates(elements, name=args.name, lat=args.lat, lon=args.lon)
 
         if args.json:

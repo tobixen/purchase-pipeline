@@ -298,6 +298,18 @@ osm-resolve --lat LAT --lon LON --name "SHOP" [--radius 50]     # ranked candida
 osm-resolve --save-as "CHAIN TOWN STREET" --pick TYPE:ID        # after the human confirms
 openprices-publish --coords-from-photo PHOTO                    # EXIF GPS → the command above
 ```
+
+If `osm-resolve` finds nothing the shop is unmapped, and `osm-add-shop` can put it
+on the map — but **that is the user's call, never the agent's**, and it is the one
+write here that lands in a public shared database under their name:
+```bash
+osm-add-shop --lat LAT --lon LON --name "SHOP" --shop seafood   # dry run
+osm-add-shop … --commit                                          # public, attributed to the user
+```
+Do not run it on your own initiative, do not invent coordinates (it refuses
+anything under 5 decimal places), and do not produce `--not-a-duplicate-of TYPE:ID`
+flags: each one asserts that *a human opened that map link* and found a different
+business. Ask, hand over the links, and wait.
 It queries Overpass for what is *at* a point. A geocoder answers a different
 question — "what address is this point" — and on 2026-07-24 reverse-geocoding the
 Sozopol fish shop returned the wine shop 20 m away.
@@ -341,6 +353,7 @@ inventory's business; deciding what a purchase *means* is not.
 | `tingbok-push` | purchase-pipeline | push reviewed price/receipt-name observations to tingbok |
 | `off-upload` | purchase-pipeline | create missing OFF products |
 | `osm-resolve` | purchase-pipeline | find a shop's OSM object by coordinates (Overpass), cache the confirmed pick |
+| `osm-add-shop` / `osm-auth` | purchase-pipeline | put a surveyed shop on the map (ask first — public write) / mint the OSM token |
 | `openprices-publish` / `openprices-auth` | purchase-pipeline | publish prices / mint token |
 | `check-grocery-ledger` | purchase-pipeline | diary↔ledger coverage gate |
 | `~/inventory-md/scripts/extract_barcodes.py --best-before` | inventory-md | barcodes + best-before OCR per photo |
@@ -398,7 +411,14 @@ This skill and the scripts are quite fresh.  For each run, try to pinpoint probl
     Overpass, so finding the node id of an **existing** shop is one command rather
     than four hand-rolled Nominatim round-trips. The Nominatim reverse-geocode is
     gone: `openprices-publish --coords-from-photo` now prints the EXIF GPS as an
-    `osm-resolve` invocation instead of guessing a shop from an address.
+    `osm-resolve` invocation instead of guessing a shop from an address. And when
+    the shop is genuinely unmapped, `osm-add-shop` adds it — one node, dry-run by
+    default, with a duplicate check that cannot be waived except per object.
+* Overpass answers "nothing" in two very different ways (2026-07-29): a real empty
+  area, and a mirror that does not hold the region at all. Treat an empty result as
+  evidence only when the source is known to cover the question — `osm-add-shop`
+  probes for that, `osm-resolve` does not, so do not read its "no POI found" as
+  proof a shop is unmapped if you passed `--endpoint`.
 * Fixed 2026-07-09 (Бурлекс run friction):
   * `add_item` crashed on YAML-native dates (`bb: 2026-07-12` → `datetime.date`) —
     now coerced; staging bb values no longer need quoting.
