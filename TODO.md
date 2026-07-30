@@ -1,9 +1,11 @@
 # TODO — purchase-pipeline
 
-**Tasks 0–4 are done** (2026-07-25/29) — kept below with a `DONE` note rather
-than deleted, because each records a real regression case worth keeping. Only
-task 5 remains. Task 4's `--commit` path is written and tested but has never run
-against the live API; see the note there.
+**Tasks 0–5 are done** (2026-07-25/30) — kept below with a `DONE` note rather
+than deleted, because each records a real regression case worth keeping. Tasks 6
+(Lidl+ history download) and 7 (`ean`/`bb` without photo inspection) remain, both
+migrated here from inventory-md rather than found on the Sozopol trip. Task 4's
+`--commit` path is written and tested but has never run against the live API; see
+the note there.
 
 Tasks were ordered: **task 0 first**, the rest independent of each other. Every task assumes the project conventions in `~/.claude-personal/CLAUDE.md`:
 write the failing test first, then implement; type-annotate public APIs; update
@@ -294,7 +296,30 @@ correctly). Three for three, on this trip's worth of code.
 
 ---
 
-## 5. `purchase-pipeline` batch mode
+## 5. `purchase-pipeline` batch mode — **DONE**
+
+Done (2026-07-30): the positional argument takes several staging files, their
+stages run file by file in the order given, and the validation runs once at the
+end. `--no-validate` is there too — as an addition rather than an alternative,
+for a caller who will run the gate themselves.
+
+A failure stops the run at that file: the later files are not started, and the
+validation does **not** run. A quality gate over a half-written `inventory.md`
+reports that half-written state as if it were the problem, which buries the stage
+error that is the actual thing to fix.
+
+One thing came out of the implementation that was not in the sketch:
+
+* **`--from` used to revive a `skipped` stage**, since it replaced the status
+  check outright rather than overriding only `done`. In single-file use that is
+  merely surprising; applied to a day's files at once it means `--from ledger`
+  pushes a hardware trip marked `tingbok_push: skipped` to tingbok as a side
+  effect of re-running ledger on the other two. `next_pending()` now takes
+  `force=`: a restart re-runs what has been done, and never overrules the
+  reviewer's decision that a stage must not run at all.
+
+Not done, and deliberately: nothing here batches *writes*. `osm-add-shop` still
+takes one shop per invocation — see task 4 and the README.
 
 ```
 purchase-pipeline A.yaml B.yaml C.yaml --commit
@@ -305,9 +330,6 @@ rather than per file. On 2026-07-24 there were three shops in one day, so
 `inventory-md parse` + `inventory-md-check-quality` ran three times at roughly two minutes
 each — long enough that each invocation had to be backgrounded, and long enough
 that the runs had to be serialised by hand to avoid racing on `inventory.json`.
-
-Alternative or addition: `--no-validate`, so a caller can skip validation on all
-but the last file.
 
 ---
 

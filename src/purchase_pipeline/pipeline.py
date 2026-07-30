@@ -27,11 +27,19 @@ A status value of ``done`` skips the stage; ``skipped`` skips it permanently
 (e.g. ``tingbok_push: skipped`` for non-food hardware); ``pending`` or a missing
 key runs it.
 
+Several staging files may be given at once. Their stages run file by file, in
+the order given, and the closing validation runs **once at the end** rather than
+per file: it re-parses and quality-checks the whole of ``inventory.md``, so it
+says the same thing however many files were just written, at about two minutes a
+go. One day with three shops is the normal case for this.
+
 Usage::
 
     pipeline.py staging/shopping-DATE.yaml             # dry run — show plan + previews
     pipeline.py staging/shopping-DATE.yaml --commit    # run pending stages, update status
     pipeline.py staging/shopping-DATE.yaml --commit --from inventory   # force-restart at a stage
+    pipeline.py staging/A.yaml staging/B.yaml staging/C.yaml --commit   # batch: validate once, at the end
+    pipeline.py staging/A.yaml --commit --no-validate  # validate later (e.g. by hand, or with the last file)
 """
 
 from __future__ import annotations
@@ -74,13 +82,20 @@ def read_status(staging: dict[str, Any]) -> dict[str, str]:
     return {k: str(v) for k, v in block.items()}
 
 
-def next_pending(status: dict[str, str], stages: list[Stage]) -> list[Stage]:
-    """Stages whose status is neither ``done`` nor ``skipped`` (missing = pending)."""
+def next_pending(status: dict[str, str], stages: list[Stage], force: bool = False) -> list[Stage]:
+    """Stages whose status is neither ``done`` nor ``skipped`` (missing = pending).
+
+    With *force* (a ``--from`` restart) a ``done`` stage is included again, but a
+    ``skipped`` one is still left out: ``done`` is a record of what has happened
+    and re-running it is the point of a restart, whereas ``skipped`` is a
+    reviewer's decision that the stage must never run for this file.
+    """
     out = []
     for st in stages:
         val = status.get(st.status_key, "pending").strip().lower()
-        if val not in ("done", "skipped"):
-            out.append(st)
+        if val == "skipped" or (val == "done" and not force):
+            continue
+        out.append(st)
     return out
 
 
@@ -136,36 +151,31 @@ def _stage_cmd(
     raise ValueError(stage.name)
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("staging", type=Path)
-    ap.add_argument("--commit", action="store_true", help="Run stages and update status (default: dry run)")
-    ap.add_argument("--inventory", type=Path, default=Path("inventory.md"))
-    ap.add_argument("--inventory-json", type=Path, help="Path to inventory.json (default: alongside inventory.md)")
-    ap.add_argument("--ledger", type=Path, help="Override ledger path (default: ledger.py's own default)")
-    ap.add_argument("--from", dest="from_stage", help="Force-restart at this stage, ignoring its status")
-    args = ap.parse_args(argv)
+def _process_file(staging: Path, args: argparse.Namespace, inv_json: Path, yaml: Any) -> tuple[int, dict[str, str]]:
+    """Run one staging file's pending stages. Returns ``(exit code, final status)``.
 
-    try:
-        import yaml
-    except ImportError:
-        sys.exit("pyyaml required")
-
-    text = args.staging.read_text(encoding="utf-8")
-    staging = yaml.safe_load(text)
-    status = read_status(staging)
-    inv_json = args.inventory_json or args.inventory.with_name("inventory.json")
+    Validation is deliberately *not* run here: it checks the whole of
+    ``inventory.md``, not this file's rows, so it belongs to the run and not to
+    the file — see ``main``.
+    """
+    text = staging.read_text(encoding="utf-8")
+    status = read_status(yaml.safe_load(text))
 
     if args.from_stage:
-        names = [s.name for s in STAGES]
-        if args.from_stage not in names:
-            sys.exit(f"--from must be one of {names}")
-        start = names.index(args.from_stage)
-        todo = STAGES[start:]
+        # A --from selector applies to every file in the run: the stages it
+        # re-runs are all idempotent (ledger upserts, inventory skips existing
+        # IDs, tingbok merges), so this is a restart, not a duplication.
+        #
+        # It overrides `done` — that is what a restart is for — but not
+        # `skipped`, which says the stage must never run for this file. The
+        # distinction only became load-bearing with batch mode: `--from ledger`
+        # over a day's files would otherwise push a hardware trip marked
+        # `tingbok_push: skipped` to tingbok, for the sake of re-running ledger.
+        todo = next_pending(status, STAGES[[s.name for s in STAGES].index(args.from_stage) :], force=True)
     else:
         todo = next_pending(status, STAGES)
 
-    print(f"# Pipeline for {args.staging}")
+    print(f"# Pipeline for {staging}")
     print("  status:", ", ".join(f"{s.status_key}={status.get(s.status_key, 'pending')}" for s in STAGES))
     print("  to run:", ", ".join(s.name for s in todo) or "(nothing pending)")
 
@@ -173,46 +183,112 @@ def main(argv: list[str] | None = None) -> int:
         for st in todo:
             # Only preview the stages that have a real dry-run; ledger always writes.
             if st.name in ("inventory", "tingbok"):
-                _run(_stage_cmd(st, args.staging, args.inventory, args.ledger, inv_json, commit=False))
+                _run(_stage_cmd(st, staging, args.inventory, args.ledger, inv_json, commit=False))
             else:
                 print(f"\n(skip preview for {st.name}: no dry-run; would run on --commit)")
-        print("\nDRY RUN — pass --commit to execute, update status, and validate.")
-        _print_followups(status)
-        return 0
+        return 0, status
 
     for st in todo:
-        rc = _run(_stage_cmd(st, args.staging, args.inventory, args.ledger, inv_json, commit=True))
+        rc = _run(_stage_cmd(st, staging, args.inventory, args.ledger, inv_json, commit=True))
         if rc != 0:
             print(f"\n✗ stage '{st.name}' failed (exit {rc}); status left unchanged so re-running resumes here.")
-            return rc
+            return rc, status
         text = set_status_in_text(text, st.status_key, "done")
-        args.staging.write_text(text, encoding="utf-8")
+        staging.write_text(text, encoding="utf-8")
         print(f"  ✓ {st.status_key}: done")
 
-    # Validate (not status-tracked): regenerate JSON and run the quality gate.
-    if _run(["inventory-md", "parse", str(args.inventory)]) != 0:
+    return 0, read_status(yaml.safe_load(text))
+
+
+def _validate(inventory: Path, inv_json: Path) -> int:
+    """Regenerate ``inventory.json`` and run the quality gate (not status-tracked)."""
+    if _run(["inventory-md", "parse", str(inventory)]) != 0:
         print("\n✗ inventory-md parse failed")
         return 1
     rc = _run([CHECK_QUALITY_CMD, str(inv_json)])
     if rc != 0:
         print("\n✗ quality gate failed — fix inventory.md before committing")
-        return rc
+    return rc
 
-    print("\n✓ commit stages done + quality gate passed.")
-    _print_followups(read_status(yaml.safe_load(text)))
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument(
+        "staging",
+        type=Path,
+        nargs="+",
+        metavar="STAGING",
+        help="Reviewed staging file(s). Several run in order, validating once at the end.",
+    )
+    ap.add_argument("--commit", action="store_true", help="Run stages and update status (default: dry run)")
+    ap.add_argument("--inventory", type=Path, default=Path("inventory.md"))
+    ap.add_argument("--inventory-json", type=Path, help="Path to inventory.json (default: alongside inventory.md)")
+    ap.add_argument("--ledger", type=Path, help="Override ledger path (default: ledger.py's own default)")
+    ap.add_argument("--from", dest="from_stage", help="Force-restart at this stage, ignoring its status")
+    ap.add_argument(
+        "--no-validate",
+        action="store_true",
+        help="Skip the closing inventory-md parse + quality gate (you then owe it before committing)",
+    )
+    args = ap.parse_args(argv)
+
+    try:
+        import yaml
+    except ImportError:
+        sys.exit("pyyaml required")
+
+    if args.from_stage and args.from_stage not in (names := [s.name for s in STAGES]):
+        sys.exit(f"--from must be one of {names}")
+
+    inv_json = args.inventory_json or args.inventory.with_name("inventory.json")
+
+    done: list[tuple[Path, dict[str, str]]] = []
+    for i, staging in enumerate(args.staging):
+        rc, status = _process_file(staging, args, inv_json, yaml)
+        if rc != 0:
+            remaining = args.staging[i + 1 :]
+            if remaining:
+                print(f"  {len(remaining)} later file(s) not started: {', '.join(str(p) for p in remaining)}")
+            # No validation after a failure: the stage's own error is what to
+            # fix, and a quality gate run over a half-written inventory.md
+            # reports that half-written state as if it were the problem.
+            print("  (not validated — re-run once the failure is fixed)")
+            return rc
+        done.append((staging, status))
+
+    if not args.commit:
+        print("\nDRY RUN — pass --commit to execute, update status, and validate.")
+    elif args.no_validate:
+        print("\n✓ commit stages done; validation skipped (--no-validate).")
+        print(f"  Still owed before committing: inventory-md parse {args.inventory} && {CHECK_QUALITY_CMD} {inv_json}")
+    else:
+        rc = _validate(args.inventory, inv_json)
+        if rc != 0:
+            return rc
+        print("\n✓ commit stages done + quality gate passed.")
+
+    _print_followups(done)
     return 0
 
 
-def _print_followups(status: dict[str, str]) -> None:
+def _print_followups(done: list[tuple[Path, dict[str, str]]]) -> None:
+    """The steps this driver deliberately does not take, per file and overall.
+
+    The public writes are per staging file (each trip publishes its own prices);
+    the diary and the git commit are per run, and printing them once per file
+    would read as three separate commits to make.
+    """
     print("\nManual follow-ups (not driven here):")
     print("  · diary-update  — one expense line per category (split a mixed card charge by hand)")
-    for key, hint in (
-        ("off_upload", "off_upload.py --products ... --commit"),
-        ("open_prices", "openprices_publish.py --shop ... --commit"),
-    ):
-        val = status.get(key, "pending").strip().lower()
-        if val not in ("done", "skipped"):
-            print(f"  · {key} pending — public write: {hint}")
+    for staging, status in done:
+        prefix = f"  · [{staging}] " if len(done) > 1 else "  · "
+        for key, hint in (
+            ("off_upload", "off_upload.py --products ... --commit"),
+            ("open_prices", "openprices_publish.py --shop ... --commit"),
+        ):
+            val = status.get(key, "pending").strip().lower()
+            if val not in ("done", "skipped"):
+                print(f"{prefix}{key} pending — public write: {hint}")
     print("  · git add inventory.md staging/ && git commit   (ledger/diary commit in their own repos)")
 
 

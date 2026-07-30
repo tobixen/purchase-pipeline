@@ -49,7 +49,7 @@ Every module is a console script; none of them need a path.
 | `shopping-context` | read-only trip context: shop OSM object, recent staging files, prior ledger rows, diary lines |
 | `receipt-formats` | per-chain receipt layout quirks — **run before transcribing a photographed receipt** |
 | `shop-import` | receipt + barcode scan → human-correctable staging YAML |
-| `purchase-pipeline` | drive the commit stages (ledger → inventory → tingbok → validate) from the file's `status:` |
+| `purchase-pipeline` | drive the commit stages (ledger → inventory → tingbok → validate) from the file's `status:`; takes several staging files at once |
 | `purchase-ledger` | `purchases.jsonl`: import / query / consumed |
 | `staging-to-inventory` | write reviewed staging rows into `inventory.md` |
 | `tingbok-push` | push reviewed price/receipt-name observations to tingbok |
@@ -82,6 +82,24 @@ Two guards protect that gate, both earned from real mistakes:
 An entry exists in the registry only for a chain whose receipt has actually been
 read, and must carry a `source` naming it. An unrecorded chain prints as
 unrecorded — a guessed layout gets trusted exactly like a known one.
+
+## A day is often several shops
+
+`purchase-pipeline A.yaml B.yaml C.yaml --commit` runs each file's commit stages
+in order and then validates **once**, at the end. The closing
+`inventory-md parse` + quality gate check the whole of `inventory.md` rather than
+the rows just written, so per file they answer the same question three times over
+at about two minutes an answer — and having to background and hand-serialise
+those runs to keep them off each other's `inventory.json` is what the 2026-07-24
+trip actually cost. `--no-validate` skips the gate for a caller who will run it
+themselves.
+
+Batching *files* is not batching *writes*: each file remains a separately
+reviewed human gate, the status block still advances per stage, and a failure
+stops the run there — later files are not started, and nothing is validated over
+a half-written inventory. This is the opposite of `osm-add-shop`, which must stay
+one shop per invocation: that one writes to a shared public database, where a
+batch is exactly what the Automated Edits code of conduct is about.
 
 ## A price points at one store, not at a chain
 

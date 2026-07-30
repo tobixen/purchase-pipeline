@@ -195,13 +195,26 @@ validates (`inventory-md parse` + `inventory-md-check-quality`):
 purchase-pipeline $INVENTORY_DIR/staging/shopping-YYYY-MM-DD.yaml           # dry run — plan + previews
 purchase-pipeline $INVENTORY_DIR/staging/shopping-YYYY-MM-DD.yaml --commit  # run pending stages + validate
 ```
+**Several shops in one day → one invocation**, not one per file: the closing
+validation checks all of `inventory.md` and takes about two minutes, so running
+it per file repeats the same answer and makes concurrent runs race on
+`inventory.json`.
+```bash
+purchase-pipeline $INVENTORY_DIR/staging/shopping-YYYY-MM-DD-*.yaml --commit  # stages per file, validate once
+```
+A failure stops the run at that file; the later ones are not started and nothing
+is validated, so fix and re-run the same command — the finished files' `status:`
+blocks make them no-ops. `--no-validate` skips the closing gate, for when you
+will run it yourself.
+
 A `status:` value of `done` skips a stage; `skipped` skips it permanently (e.g.
 `tingbok_push: skipped` only when the visit has **no barcoded items at all** —
 NOT for non-food hardware. tingbok is the general EAN/category/**price**
 aggregator: barcoded tools, batteries, adhesives and chemicals all belong there
 (the food-vs-non-food split governs only OFF vs Open Products Facts). On a stage failure it stops and
 leaves the status unchanged, so re-running resumes there. `--from STAGE`
-force-restarts at a stage. The remaining steps (photos, publishing,
+force-restarts at a stage (in every file given) — it re-runs `done` stages but
+never a `skipped` one. The remaining steps (photos, publishing,
 commit) stay manual — see below. The numbered steps that follow are *what the
 driver runs*; run them individually only to debug.
 
