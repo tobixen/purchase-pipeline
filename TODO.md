@@ -1,11 +1,11 @@
 # TODO — purchase-pipeline
 
 **Tasks 0–5 are done** (2026-07-25/30) — kept below with a `DONE` note rather
-than deleted, because each records a real regression case worth keeping. Tasks 6
-(Lidl+ history download) and 7 (`ean`/`bb` without photo inspection) remain, both
-migrated here from inventory-md rather than found on the Sozopol trip. Task 4's
-`--commit` path is written and tested but has never run against the live API; see
-the note there.
+than deleted, because each records a real regression case worth keeping. Task 7's
+half of the work in *this* project is done too; its other half is inventory-md's
+best-before OCR quality and stays open there. Task 6 (Lidl+ history download)
+remains. Task 4's `--commit` path is written and tested but has never run against
+the live API; see the note there.
 
 Tasks were ordered: **task 0 first**, the rest independent of each other. Every task assumes the project conventions in `~/.claude-personal/CLAUDE.md`:
 write the failing test first, then implement; type-annotate public APIs; update
@@ -360,7 +360,44 @@ Worth checking whether an existing library already does the Lidl Plus API
 
 ---
 
-## 7. Populate a staging file's `ean` + `bb` without human photo inspection
+## 7. Populate a staging file's `ean` + `bb` without human photo inspection — **this project's half DONE**
+
+Done (2026-07-30): `src/purchase_pipeline/photo_match.py`. Classification and the
+expiry-pairing rule moved there out of `shop_import.py` (association is one
+concern and now lives in one module), joined by the association itself, and
+`build_staging` runs candidates → photo association → exact-candidate fill.
+
+The rule is corroboration and nothing weaker: a photo's EAN fills a line only
+when that line's `ean_candidates` already carried it. A scan proves an EAN was in
+the basket and says nothing about which till string it was rung up as, which is
+what everything downstream is keyed by; the reverse receipt-name lookup says this
+till string has been that EAN before. Either alone is a guess. The no-photo case
+(a lone `score: 1.0` candidate) is the guide's own repeat-purchase rule applied
+mechanically, and recorded as `ean_source: tingbok_receipt_name:1.0` so a
+reviewer can tell it from their own work.
+
+Everything unsettled stays visible: the row keeps `ean: null` and the photo stays
+in `loose_photos` with a `review` string, which `shop-import` prints on the way
+out. Ambiguity is reported in both directions (one EAN matching several lines,
+several EANs matching one line) rather than resolved by picking.
+
+**The extractor's review verdicts were being thrown away**, which is the part of
+this that was an actual bug rather than a missing feature:
+
+* a `status: needs_review` photo (two parity-confusable reads, both with valid
+  check digits) had its `data` written in as a confident `ean` — the `tag:TODO`
+  block exists precisely so that does not happen;
+* a `status: rejected` losing read became a *second* barcode photo, sitting next
+  to the winner as if it were an independent scan.
+
+Now: `barcode_conflict` (carrying `ean_candidates`, no `ean`), `undecoded`, and
+rejected reads dropped.
+
+Still open: **inventory-md's half**, extraction quality — see below. Nothing here
+improves a date the OCR could not read; it only makes sure a date that *was* read
+lands on the right line, and that an unreadable one is visibly unread.
+
+Original notes follow.
 
 Migrated from inventory-md's TODO on 2026-07-29, **split across both projects** —
 neither half delivers the goal alone, so this entry and its inventory-md

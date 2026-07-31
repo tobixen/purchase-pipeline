@@ -49,6 +49,30 @@ items must carry one. See :func:`reconcile_total`, and ``receipt-formats.json``
 for the per-chain layout quirks that make a hand transcription go wrong in the
 first place.
 
+Per-item identification and its provenance:
+
+* ``ean`` / ``bb`` — the product code and best-before. Either may arrive already
+  filled by ``shop_import`` where the evidence settled it, or be filled by the
+  reviewer; nothing downstream can tell the two apart, which is why both carry a
+  source field.
+* ``ean_source`` / ``bb_source`` — free text saying what filled the field:
+  ``photo:IMG_1.jpg`` (a scan corroborated by the line's own candidate list),
+  ``tingbok_receipt_name:1.0`` (an exact prior observation of this till string),
+  or whatever a reviewer writes. ``bb_source`` additionally drives an estimate
+  heuristic in ``inventory_import`` — a source mentioning ``est``/``shelf``/
+  ``inferred`` marks the date as an estimate.
+* ``ean_candidates`` — what tingbok's reverse receipt-name lookup returned, each
+  with a ``score``. 1.0 means this exact till string was pushed for that EAN
+  before; below 1.0 is a fuzzy suggestion and can be plausibly wrong.
+* ``photos`` — the photo files this line's identification rests on.
+
+``loose_photos`` holds the photos that could **not** be placed on a line, each
+with a ``kind`` (``barcode``, ``barcode_conflict``, ``undecoded``, ``expiry``,
+``label``) and, where it was tried and failed, a ``review`` string saying why.
+A ``barcode_conflict`` entry deliberately carries no ``ean``: its candidates all
+have valid check digits and a human must pick. See
+:mod:`purchase_pipeline.photo_match`.
+
 Per-item routing flags:
 
 * ``to_tingbok`` — set ``true`` to push a price/receipt-name observation to

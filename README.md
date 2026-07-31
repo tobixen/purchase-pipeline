@@ -61,10 +61,11 @@ Every module is a console script; none of them need a path.
 
 ## The staging file is the human gate
 
-`shop-import` does only mechanical work. It never decides which EAN a line is and
-never reads a best-before off a photo — those are judgement calls left to the
-review step. Everything irreversible (inventory write, tingbok PUT, OFF/Open
-Prices publish) happens *after* a human has reviewed the staging YAML.
+`shop-import` does only mechanical work. It reads no judgement into a photo:
+where it fills a field, two independent sources agreed, and the row records
+which (`ean_source`, `bb_source`). Everything irreversible (inventory write,
+tingbok PUT, OFF/Open Prices publish) happens *after* a human has reviewed the
+staging YAML.
 
 Two guards protect that gate, both earned from real mistakes:
 
@@ -82,6 +83,34 @@ Two guards protect that gate, both earned from real mistakes:
 An entry exists in the registry only for a chain whose receipt has actually been
 read, and must carry a `source` naming it. An unrecorded chain prints as
 unrecorded — a guessed layout gets trusted exactly like a known one.
+
+## Which line was that barcode?
+
+A scan proves an EAN was in the basket. It says nothing about which till string
+it was rung up as — and the till string is what the receipt, the ledger and the
+price observation are keyed by. That gap is `photo_match`'s job, and the split
+with inventory-md is along it: *extraction* (what does this photo say?) is
+`extract_barcodes.py` over there; *association* (which line does it say it
+about?) is here.
+
+Association needs two independent sources to agree: a photo's EAN fills a line
+only when that line already listed it among its `ean_candidates` — tingbok's
+reverse receipt-name lookup saying "this till string has been that EAN before".
+A repeat purchase with no photo at all is filled from a candidate scoring 1.0,
+which is not a similarity score but an exact prior observation. Everything else
+stays visibly unresolved: the line keeps `ean: null`, and the photo stays in
+`loose_photos` with a `review` string saying what stopped it — no line lists this
+EAN (a new purchase), or several do. Guessing between them is the reviewer's job
+precisely because it cannot be done mechanically, and a guess written into `ean:`
+is indistinguishable from a fact by the time the price is published.
+
+The extractor's own verdicts survive the trip. A photo whose barcode decoded two
+parity-confusable ways arrives as **one** `barcode_conflict` entry with no `ean`
+at all — every candidate has a valid check digit, since a parity misdecode
+recomputes the checksum over the corrupted digits, so reading the first one and
+moving on would turn a deliberate "look at this" back into a confident answer.
+A barcode that is present but unreadable arrives as `undecoded`; a losing read of
+a resolved conflict is dropped rather than left sitting next to the winner.
 
 ## A day is often several shops
 
@@ -161,8 +190,8 @@ This project depends on inventory-md. inventory-md knows nothing about this one.
 
 The dependency is a **library** dependency, not merely a CLI one:
 
-* `shop_import` parses dates off receipts with `inventory_md.bb_dates`, the same
-  parser `extract_barcodes.py` uses on photos;
+* `photo_match` (run by `shop_import`) parses best-before dates with
+  `inventory_md.bb_dates`, the same parser `extract_barcodes.py` uses on photos;
 * `inventory_import` calls `inventory_md.additem` and `inventory_md.parser`
   directly to write `inventory.md`;
 * `pipeline` shells out to `inventory-md parse` and `inventory-md-check-quality`

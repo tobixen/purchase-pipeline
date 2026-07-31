@@ -24,8 +24,8 @@ classifiers = [
     "Topic :: Office/Business :: Financial :: Accounting",
     "Topic :: Home Automation",
 ]
-# inventory-md is a *library* dependency, not just a CLI one: shop_import reads
-# receipt dates with inventory_md.bb_dates, and inventory_import calls
+# inventory-md is a *library* dependency, not just a CLI one: photo_match reads
+# best-before dates with inventory_md.bb_dates, and inventory_import calls
 # inventory_md.additem / .parser directly. See README "Relationship to inventory-md".
 dependencies = [
     "inventory-md",

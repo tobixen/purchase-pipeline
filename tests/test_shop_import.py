@@ -10,10 +10,7 @@ import pytest
 
 from purchase_pipeline.shop_import import (
     _tingbok_searcher,
-    build_loose_photos,
     build_staging,
-    classify_photo_result,
-    find_date_candidates,
     parse_lidl_receipt,
     parse_price,
     receipt_date,
@@ -327,121 +324,6 @@ class TestBackwardsCompatibleReceipts:
             assert "line_discount" not in item
 
 
-class TestFindDateCandidates:
-    def test_iso_date(self):
-        assert "2026-06-12" in find_date_candidates("Best before 2026-06-12")
-
-    def test_dotted_full_date(self):
-        assert "2026-06-12" in find_date_candidates("12.06.2026")
-
-    def test_month_year_only(self):
-        assert "2026-08" in find_date_candidates("08.2026")
-
-    def test_no_date(self):
-        assert find_date_candidates("no dates here") == []
-
-
-class TestClassifyPhotoResult:
-    def test_barcode_photo(self):
-        result = {
-            "file": "/p/IMG_1.jpg",
-            "type": "EAN13",
-            "data": "4056489080510",
-            "product": {"name": "Pilos Fresh Milk 3% 1l"},
-        }
-        photo = classify_photo_result(result)
-        assert photo == {
-            "file": "IMG_1.jpg",
-            "kind": "barcode",
-            "ean": "4056489080510",
-            "product": "Pilos Fresh Milk 3% 1l",
-        }
-
-    def test_expiry_photo_from_ocr_date(self):
-        result = {
-            "file": "/p/IMG_2.jpg",
-            "type": "OCR",
-            "data": "12.06.2026",
-            "ocr_results": [{"text": "12.06.2026"}],
-            "ocr_title": None,
-        }
-        photo = classify_photo_result(result)
-        assert photo["kind"] == "expiry"
-        assert "2026-06-12" in photo["ocr_date_candidates"]
-
-    def test_barcode_photo_surfaces_best_before(self):
-        result = {
-            "file": "/p/IMG_1.jpg",
-            "type": "EAN13",
-            "data": "4056489693307",
-            "product": {"name": "Lukanka"},
-            "best_before": "2026-07-25",
-        }
-        photo = classify_photo_result(result)
-        assert photo["kind"] == "barcode"
-        assert photo["bb"] == "2026-07-25"
-
-    def test_label_photo_without_date(self):
-        result = {
-            "file": "/p/IMG_3.jpg",
-            "type": "OCR",
-            "data": "Pilos Mlyako",
-            "ocr_results": [{"text": "Pilos Mlyako"}],
-            "ocr_title": "Pilos Mlyako",
-        }
-        photo = classify_photo_result(result)
-        assert photo["kind"] == "label"
-        assert photo["ocr_title"] == "Pilos Mlyako"
-
-
-class TestBuildLoosePhotos:
-    def test_maps_each_result(self):
-        results = [
-            {"file": "/p/IMG_1.jpg", "type": "EAN13", "data": "4056489080510", "product": None},
-            {"file": "/p/IMG_2.jpg", "type": "OCR", "data": "12.06.2026", "ocr_results": [{"text": "12.06.2026"}]},
-        ]
-        loose = build_loose_photos(results)
-        assert [p["kind"] for p in loose] == ["barcode", "expiry"]
-
-    def test_following_expiry_photo_paired_to_barcode(self):
-        # A barcode shot with no date, followed by a separate expiry shot:
-        # the expiry date should be carried back onto the barcode photo.
-        results = [
-            {"file": "/p/IMG_1.jpg", "type": "EAN13", "data": "4056489080510", "product": None},
-            {"file": "/p/IMG_2.jpg", "type": "OCR", "data": "12.06.2026", "ocr_results": [{"text": "12.06.2026"}]},
-        ]
-        loose = build_loose_photos(results)
-        assert loose[0]["bb"] == "2026-06-12"
-        assert loose[0]["bb_from"] == "IMG_2.jpg"
-
-    def test_own_best_before_not_overwritten_by_following(self):
-        # A barcode photo that already carries its own bb keeps it and is not
-        # re-paired to a following expiry photo.
-        results = [
-            {
-                "file": "/p/IMG_1.jpg",
-                "type": "EAN13",
-                "data": "4056489080510",
-                "product": None,
-                "best_before": "2026-07-25",
-            },
-            {"file": "/p/IMG_2.jpg", "type": "OCR", "data": "12.06.2026", "ocr_results": [{"text": "12.06.2026"}]},
-        ]
-        loose = build_loose_photos(results)
-        assert loose[0]["bb"] == "2026-07-25"
-        assert "bb_from" not in loose[0]
-
-    def test_barcode_without_following_expiry_unpaired(self):
-        # Two consecutive barcode photos: neither gains a bb.
-        results = [
-            {"file": "/p/IMG_1.jpg", "type": "EAN13", "data": "4056489080510", "product": None},
-            {"file": "/p/IMG_2.jpg", "type": "EAN13", "data": "4056489693307", "product": None},
-        ]
-        loose = build_loose_photos(results)
-        assert "bb" not in loose[0]
-        assert "bb" not in loose[1]
-
-
 def _stub_searcher(receipt_name, shop=None):
     """Pretend tingbok knows the milk receipt name."""
     if "МЛЯКО" in receipt_name:
@@ -474,6 +356,27 @@ class TestBuildStaging:
         results = [{"file": "/p/IMG_1.jpg", "type": "EAN13", "data": "4056489080510", "product": None}]
         staging = build_staging(LIDL_RECEIPT, shop="Lidl Varna", searcher=_stub_searcher, barcode_results=results)
         assert staging["loose_photos"][0]["file"] == "IMG_1.jpg"
+
+    def test_photo_and_candidate_agreeing_fill_the_row(self):
+        """The end the whole thing exists for: a row arrives with its ean filled.
+
+        The scan says this EAN was in the basket; tingbok says this till string
+        has been that EAN before. Neither alone places it on a line.
+        """
+        results = [{"file": "/p/IMG_1.jpg", "type": "EAN13", "data": "4056489080527", "product": None}]
+        staging = build_staging(LIDL_RECEIPT, shop="Lidl Varna", searcher=_stub_searcher, barcode_results=results)
+        milk = staging["items"][1]
+        assert milk["ean"] == "4056489080527"
+        assert milk["ean_source"] == "photo:IMG_1.jpg"
+        assert staging["loose_photos"] == []
+
+    def test_repeat_purchase_fills_from_an_exact_candidate_without_any_photo(self):
+        staging = build_staging(LIDL_RECEIPT, shop="Lidl Varna", searcher=_stub_searcher, barcode_results=[])
+        beer, milk, nectarines = staging["items"]
+        assert milk["ean"] == "4056489080527"
+        assert milk["ean_source"] == "tingbok_receipt_name:1.0"
+        # nothing known about the other two: no candidate, no photo, no guess
+        assert (beer["ean"], nectarines["ean"]) == (None, None)
 
     def test_shop_recorded(self):
         staging = build_staging(LIDL_RECEIPT, shop="Lidl Varna", searcher=_stub_searcher, barcode_results=[])

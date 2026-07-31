@@ -7,12 +7,17 @@ mechanical work:
 * parse a shop receipt (currently Lidl JSON) into one staging row per line item;
 * classify barcode-extraction output photos as barcode / expiry / label;
 * gather candidate EANs per receipt line via tingbok's reverse receipt-name
-  lookup (``GET /api/ean/search``).
+  lookup (``GET /api/ean/search``);
+* fill ``ean``/``bb`` on the lines where two independent sources agree, and
+  flag every photo and line where they do not
+  (:mod:`purchase_pipeline.photo_match`).
 
-It deliberately does NOT decide which EAN a line is, nor read best-before dates
-from photos — those are judgement calls left to a later AI review step that edits
-the emitted staging YAML. The staging file is the correction checkpoint before
-any irreversible action (tingbok PUT, inventory edit, commit).
+It still decides nothing on its own evidence: an EAN scanned but never before
+seen under this till string, a conflicting barcode read, a best-before nobody
+can pair to a line — all of those arrive as review work with a reason attached,
+not as a filled-in field. Where a field *is* filled, ``ean_source`` /
+``bb_source`` record what filled it. The staging file remains the correction
+checkpoint before any irreversible action (tingbok PUT, inventory edit, commit).
 
 The receipts file holds many trips; by default the **newest by purchase date**
 is imported. It is not the last array element: ``lidl_receipts.json`` is sorted
@@ -41,7 +46,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from inventory_md.bb_dates import find_dates  # date parsing shared with extract_barcodes
+from purchase_pipeline.photo_match import (
+    REVIEW_KINDS,
+    associate_photos,
+    build_loose_photos,
+    fill_eans_from_candidates,
+)
 
 try:
     import niquests as requests
@@ -163,8 +173,10 @@ def _new_item_row(receipt_name: str, price: float, qty: float, unit: str) -> dic
         "qty": qty,
         "unit": unit,
         "line_total": round(price * qty, 2),
-        # ---- filled during review (AI/human) ----
+        # ---- filled during review (AI/human), or by photo_match where the
+        #      evidence settles it — ``ean_source``/``bb_source`` say which ----
         "ean": None,
+        "ean_source": None,
         "ean_candidates": [],
         "name": None,
         "category": None,
@@ -285,84 +297,6 @@ def parse_lidl_receipt(
     }
 
 
-def find_date_candidates(text: str) -> list[str]:
-    """Extract ISO date candidates from free text (shared bb_dates parser)."""
-    return find_dates(text)
-
-
-def classify_photo_result(result: dict[str, Any]) -> dict[str, Any]:
-    """Classify one ``extract_barcodes.py`` result as barcode / expiry / label.
-
-    This is a heuristic guess to help the reviewer; the AI step confirms it.
-    A photo-derived best-before (from ``extract_barcodes --best-before``) is
-    surfaced as ``bb`` regardless of kind, since it often rides the barcode shot.
-    """
-    filename = Path(result["file"]).name
-    bb = result.get("best_before")
-
-    if result.get("type") != "OCR":
-        product = result.get("product") or {}
-        photo = {"file": filename, "kind": "barcode", "ean": result.get("data"), "product": product.get("name")}
-        if bb:
-            photo["bb"] = bb
-        return photo
-
-    texts = [result.get("ocr_title") or "", result.get("data") or ""]
-    texts += [r.get("text", "") for r in result.get("ocr_results", [])]
-    dates: list[str] = []
-    for text in texts:
-        for iso in find_date_candidates(text):
-            if iso not in dates:
-                dates.append(iso)
-    if bb or dates:
-        photo = {"file": filename, "kind": "expiry", "ocr_date_candidates": dates}
-        if bb:
-            photo["bb"] = bb
-        return photo
-    return {"file": filename, "kind": "label", "ocr_title": result.get("ocr_title") or result.get("data")}
-
-
-def _expiry_date(photo: dict[str, Any]) -> str | None:
-    """Best best-before date an expiry photo offers, or None.
-
-    Prefers the OCR pass's own ``bb`` pick; else the latest date candidate
-    (best-before is usually the furthest-out date on a pack — lot/production
-    dates are earlier).
-    """
-    if photo.get("bb"):
-        return photo["bb"]
-    dates = photo.get("ocr_date_candidates") or []
-    return max(dates) if dates else None
-
-
-def _pair_following_expiry(photos: list[dict[str, Any]]) -> None:
-    """Carry an expiry-only photo's date back onto the preceding barcode photo.
-
-    A best-before is often shot in the frame *immediately after* the barcode
-    rather than on the barcode itself. When a barcode photo has no ``bb`` of its
-    own and is directly followed by an ``expiry`` photo, attach that date as the
-    barcode's ``bb`` and record the source frame in ``bb_from`` (the pairing is
-    a positional guess, so the reviewer can see where it came from). Mutates in
-    place.
-    """
-    for prev, cur in zip(photos, photos[1:], strict=False):
-        if prev.get("kind") != "barcode" or prev.get("bb"):
-            continue
-        if cur.get("kind") != "expiry":
-            continue
-        date = _expiry_date(cur)
-        if date:
-            prev["bb"] = date
-            prev["bb_from"] = cur["file"]
-
-
-def build_loose_photos(barcode_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Classify every barcode-extraction result into a loose_photos list."""
-    photos = [classify_photo_result(r) for r in barcode_results]
-    _pair_following_expiry(photos)
-    return photos
-
-
 def _tingbok_searcher(base_url: str = DEFAULT_TINGBOK_URL) -> Searcher:
     """Return a searcher that queries tingbok's reverse receipt-name endpoint."""
 
@@ -391,9 +325,16 @@ def build_staging(
     searcher: Searcher,
     barcode_results: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Assemble the full staging structure: parsed rows + candidates + photos."""
+    """Assemble the full staging structure: parsed rows + candidates + photos.
+
+    Candidates are gathered first, then used as the corroborating half of photo
+    association, then as the fallback for a repeat purchase with no photo. So a
+    line arrives with its ``ean``/``bb`` already filled whenever the evidence
+    settles it, and with ``ean_source`` saying which evidence — see
+    :mod:`purchase_pipeline.photo_match`.
+    """
     staging = parse_lidl_receipt(receipt, shop=shop, source=source)
-    staging["loose_photos"] = build_loose_photos(barcode_results or [])
+    photos = build_loose_photos(barcode_results or [])
 
     for item in staging["items"]:
         # No shop filter: receipt-name observations are often recorded with no
@@ -409,6 +350,9 @@ def build_staging(
             }
             for m in matches
         ]
+
+    staging["loose_photos"] = associate_photos(staging["items"], photos)
+    fill_eans_from_candidates(staging["items"])
     return staging
 
 
@@ -456,9 +400,18 @@ def main() -> None:  # pragma: no cover - thin CLI wiring
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(text, encoding="utf-8")
-        n = len(staging["items"])
-        flagged = sum(1 for i in staging["items"] if not i["ean_candidates"])
-        print(f"Wrote {args.out} — {n} items, {flagged} with no EAN candidate (need review).")
+        items = staging["items"]
+        filled = sum(1 for i in items if i["ean"])
+        with_bb = sum(1 for i in items if i["bb"])
+        review = [p for p in staging["loose_photos"] if p.get("review") or p["kind"] in REVIEW_KINDS]
+        print(
+            f"Wrote {args.out} — {len(items)} items, {filled} with an ean ({with_bb} with a bb); "
+            f"{len(items) - filled} still to match by hand."
+        )
+        if review:
+            print(f"{len(review)} photo(s) need a look — see loose_photos[].review:")
+            for photo in review:
+                print(f"  · {photo['file']} [{photo['kind']}] {photo.get('review', '')}")
     else:
         print(text)
 

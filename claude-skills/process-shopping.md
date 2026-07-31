@@ -100,23 +100,39 @@ two readings — **only the total does**, which is why the transcribed line item
 must sum to the printed `receipt_total`; every consumer refuses the file
 otherwise (`staging.reconcile_total`). If the chain has no entry yet, transcribe
 conservatively and add one afterwards, with a `source` naming the receipt.
-The importer emits one row per line item with `ean_candidates`, a classified
-`loose_photos` list (each may carry a `bb` from the OCR pass), and `needs_review`
-flags. A barcode photo with no date of its own is paired with the date from the
-*immediately following* expiry photo, surfaced as `bb` with a `bb_from` pointer
-to the source frame; treat a `bb_from` date as a positional guess to sanity-check.
-It never decides a match or invents a date.
+The importer emits one row per line item with `ean_candidates` and
+`needs_review` flags, and **fills `ean`/`bb` itself wherever two independent
+sources agree** — a scanned EAN that the line's own candidate list already
+carried, or (with no photo at all) a candidate scoring 1.0. Every filled field
+says what filled it in `ean_source`/`bb_source`. A barcode photo with no date of
+its own is paired with the date from the *immediately following* expiry photo;
+that pairing is positional, so the `bb_source` names the frame it was read off
+and both photos are attached to the row for sanity-checking.
 
-Photos needs to be manually inspected for barcodes that don't resolves and best-before dates that cannot be read by the OCR.  Run the scripts first and wait for them — the whole point of `extract_barcodes.py`/`shop-import` is to make manual photo inspection unnecessary.
+What it does **not** settle stays visible rather than guessed: the row keeps
+`ean: null` and the photo stays in `loose_photos` with a `review` string saying
+what stopped it (no line lists this EAN — the new-purchase regime below; or
+several do). `shop-import` prints those on the way out; **read that list**.
+
+Photos need manual inspection only for what lands in `loose_photos` — barcodes
+that don't resolve (`kind: barcode_conflict` or `undecoded`) and best-before
+dates the OCR couldn't read. Run the scripts first and wait for them: the point
+of `extract_barcodes.py`/`shop-import` is to make photo inspection unnecessary
+everywhere else. A `barcode_conflict` carries no `ean` on purpose — its
+candidates all have valid check digits, so it is a genuine "open the photo and
+read the digits" job, not a pick-the-first.
 
 Default assumption: each photo holds **nothing but a barcode and/or an expiry date**, and a product's best-before is either in its barcode photo, in the immediately following photo, or supplied by the user.
 
 ## Stage 2 — review (AI, or by user in an editor)
 
-Edit the staging file: for each item pick the right `ean` from `ean_candidates`
-(or add one), set `name`, `category`, `bb` (from the photo's `bb` candidate, else
-`:EST`), `location`, and a unique `inventory_id`. Attach label `photos`. Clear
-`needs_review`. **Set `to_tingbok: true` for items with a confirmed EAN,
+Edit the staging file: for each item **without** an `ean`, pick the right one
+from `ean_candidates` (or add one); for each item that arrived **with** one,
+check `ean_source` and treat it as the importer's claim, not as your work —
+`photo:…` means a scan and the candidate list agreed, `tingbok_receipt_name:1.0`
+means an exact prior observation of this till string. Then set `name`,
+`category`, `bb` (from the photo's `bb` candidate, else `:EST`), `location`, and
+a unique `inventory_id`. Attach label `photos`. Clear `needs_review`. **Set `to_tingbok: true` for items with a confirmed EAN,
 `to_tingbok: false` for by-weight produce and items without a barcode.** The
 importer scaffolds `to_tingbok: null` as a deliberate reminder — leave no item
 at `null` before committing. This is the checkpoint to fix mistakes **before**
@@ -163,16 +179,19 @@ Batch these flags into one round of questions rather than asking item-by-item.
 
 **Matching receipt lines to scanned EANs/label photos.** Two regimes:
 
-- **Repeat purchase (same product, same shop)** — algorithmic. The previous
-  trip pushed the receipt name to tingbok, so the importer's `ean_candidates`
-  carry the right EAN with **`score: 1.0`** (an exact prior observation —
-  trust it). Verified 2026-07-10: all seven Бурлекс names from the day before
-  resolved 1.0 to the correct EAN; even truncated/partial/other-shop till
-  strings ranked the right product first at ~0.6–0.7.
+- **Repeat purchase (same product, same shop)** — algorithmic, and **the
+  importer now does it for you**: a lone `score: 1.0` candidate (an exact prior
+  observation) is written straight into `ean` with
+  `ean_source: tingbok_receipt_name:1.0`. Verified 2026-07-10: all seven Бурлекс
+  names from the day before resolved 1.0 to the correct EAN; even
+  truncated/partial/other-shop till strings ranked the right product first at
+  ~0.6–0.7. Two candidates both scoring 1.0 (a shop that changed supplier under
+  one till string) settle nothing and are left for you, with a note on the row.
 - **New purchase** — no algorithm settles it; a candidate with **`score < 1.0`
   is only a fuzzy suggestion** and can be plausibly wrong (a never-seen name
-  still returns somebody else's product at ~0.68). Matching the receipt line
-  to the scanned barcodes and label photos is AI/human work.
+  still returns somebody else's product at ~0.68). The importer therefore fills
+  nothing and leaves the scan in `loose_photos` saying "no receipt line lists
+  EAN … as a candidate". Matching those to receipt lines is AI/human work.
 
 For new purchases, corroborate wherever the material allows: photos arrive as
 an ordered stream and adjacent products' label shots are easy to mix up, so if
