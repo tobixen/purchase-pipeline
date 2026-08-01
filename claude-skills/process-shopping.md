@@ -10,8 +10,9 @@ This is a staged, resumable workflow for turning a shopping trip into:
 * **Open Food Facts** product data (optional)
 * **Open Prices** prices.
 
-This is the generic guide — uses `$INVENTORY_DIR`, `$PHOTO_DIR`, `$LEDGER` as placeholders;
-your personal skill fills in real paths, shops, and credentials.
+This is the generic guide — uses `$INVENTORY_DIR`, `$PHOTO_DIR`, `$LEDGER`,
+`$RECEIPTS` as placeholders; your personal skill fills in real paths, shops and
+credentials.
 
 It lives in **purchase-pipeline**, which owns the workflow and every command in
 it bar three. What an inventory *item* looks like once written — the line format,
@@ -69,6 +70,10 @@ allowlisted; grepping the markdown is neither.
 ## Stage 1 — import (deterministic)
 
 ```bash
+# Lidl only: pull the trip off Lidl+ (order-scrapers, not this project; log in
+# to Lidl+ in the browser first):
+lidl-history --fetch --country bg
+
 # BEFORE transcribing a photographed receipt — this chain's layout quirks:
 receipt-formats "Billa Sozopol"
 
@@ -88,6 +93,12 @@ has more than one visit, suffix the file with the shop, e.g.
 
 Receipt source: a JSON file from a receipt parser, or OCR/read a photographed
 receipt into the same shape (`date, shop, total, items[name,price,quantity]`).
+For Lidl that file is `$RECEIPTS` (`~/regnskap/lidl_receipts.json`), filled by
+**order-scrapers'** `lidl-history --fetch`, which drives the shopping-analyzer
+downloader against Lidl's ticket API. It merges rather than replaces: new trips
+are appended and stamped, and a trip already on disk is reported but not
+overwritten (`--update-all` takes the fetched copy). If it fails, the session
+cookies are usually stale — log in to Lidl+ in the browser and run it again.
 
 **Transcribing from a photo is the one place a human reads numbers off an image,
 so it is the one place a wrong reading gets in.** Run `receipt-formats "SHOP"`
@@ -378,6 +389,7 @@ inventory's business; deciding what a purchase *means* is not.
 |---|---|---|
 | `shopping-context` | purchase-pipeline | read-only trip context: shop OSM, recent staging |
 | `receipt-formats` | purchase-pipeline | per-chain receipt layout quirks, before transcribing |
+| `lidl-history` | **order-scrapers** | fetch the Lidl+ receipt history into `$RECEIPTS` (Lidl trips only) |
 | `shop-import` | purchase-pipeline | receipt + photos → staging YAML |
 | `purchase-pipeline` | purchase-pipeline | drive Stage-3 commit (ledger→inventory→tingbok→validate) from `status:` |
 | `purchase-ledger` | purchase-pipeline | purchases.jsonl: import / query / consumed |

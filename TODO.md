@@ -1,11 +1,24 @@
 # TODO — purchase-pipeline
 
-**Tasks 0–5 are done** (2026-07-25/30) — kept below with a `DONE` note rather
-than deleted, because each records a real regression case worth keeping. Task 7's
-half of the work in *this* project is done too; its other half is inventory-md's
-best-before OCR quality and stays open there. Task 6 (Lidl+ history download)
-remains. Task 4's `--commit` path is written and tested but has never run against
-the live API; see the note there.
+**Every task here is done** (2026-07-25/31) — kept below with a `DONE` note
+rather than deleted, because each records a real regression case worth keeping.
+Two things are open and neither is a task in this file:
+
+* **inventory-md's half of task 7** — best-before OCR quality against dot-matrix
+  print, foil and embossing. Tracked in `~/inventory-md/docs/TODO.md`. This
+  project's half (association) is done; nothing here can improve a date the OCR
+  could not read.
+* **`~/.claude/skills/` is an unversioned gitlink** (task 0), the only item in
+  this file that was never about code in this repository.
+
+Task 6 was **done in another project** — the Lidl fetch belongs to
+[order-scrapers](https://github.com/tobixen/order-scrapers), which already owned
+the shopping-analyzer integration; it was written here first and moved. See the
+note there, it is the more useful kind of record.
+
+Task 4's `--commit` path is written and tested but has never run against the live
+API; see the note there. Task 6's fetch has not run live either — it drives a
+downloader that needs a browser session.
 
 Tasks were ordered: **task 0 first**, the rest independent of each other. Every task assumes the project conventions in `~/.claude-personal/CLAUDE.md`:
 write the failing test first, then implement; type-annotate public APIs; update
@@ -333,7 +346,70 @@ that the runs had to be serialised by hand to avoid racing on `inventory.json`.
 
 ---
 
-## 6. Script the Lidl+ shopping-history download
+## 6. Script the Lidl+ shopping-history download — **DONE, in another project**
+
+Done (2026-07-31/08-01): `lidl-history --fetch` in
+[order-scrapers](https://github.com/tobixen/order-scrapers), not here.
+
+**The undocumented step, now written down**, which was this task's own first
+requirement:
+
+```bash
+cd ~/regnskap && python ~/shopping-analyzer/get_data.py update --browser chromium --country bg
+```
+
+`~/shopping-analyzer` is tobixen's fork of
+[l2xu/shopping-analyzer](https://github.com/l2xu/shopping-analyzer), carrying
+fixes for the Bulgarian receipt layout (per-line discounts were matched on
+German-only text and never fired — 30.19 EUR of invisible discounts across 20
+receipts, fixed 2026-07-22) and for Chromium cookie extraction. It talks to
+Lidl's ticket API at `https://www.lidl.<cc>/mre/api/v1/tickets` with session
+cookies lifted from a logged-in browser profile.
+
+**This task's premise was wrong, and that is the useful part of the record.** It
+said a shop's receipt history "is this project's business, not the inventory
+format's" — true as far as it went, but the alternative was never only
+inventory-md. order-scrapers already existed for exactly this (`svb24-history`,
+`decathlon-history`, `aliexpress-history`, `lidl-history`), its README already
+named the shopping-analyzer dependency, and it is AGPL *specifically* so it can
+sit next to that AGPL project. It was written here first and moved; the reverting
+commit is the cost of not having looked around before writing code.
+
+The name would have collided too: `lidl-history` was already installed in
+`~/.local/bin` from order-scrapers, and a second console script of that name in
+this project would have silently overwritten it on the next `pip install --user`.
+
+What stayed here: the documentation of where `lidl_receipts.json` comes from
+(README, and Stage 1 of the workflow guide), and `parse_lidl_receipt` preferring
+a receipt's own `source` stamp over the filename — its docstring already claimed
+it did that, and now the stamp exists to prefer.
+
+What went there, with the guards that were the point of wrapping it at all:
+
+* it runs in a scratch directory on a **copy**. The downloader's output path is
+  relative to the working directory — which is why the manual step began with a
+  `cd` — so a crashed run would otherwise overwrite the stored receipts;
+* a result holding **fewer** receipts than it was given is refused: merging only
+  ever adds, so a truncated fetch merges cleanly and invisibly;
+* `--country` is required, because shopping-analyzer defaults to Germany and the
+  wrong country answers "no receipts" exactly like a good fetch with nothing new
+  — task 4's lesson, third outing;
+* a stored receipt is reported rather than rewritten (it may carry hand
+  corrections); order-scrapers' existing `--update-all` is what accepts the
+  fetched copy.
+
+Still not automated, deliberately: the browser login. And the fetch has not run
+against the live API — it needs a browser session; it was exercised end to end
+against a stub downloader, which is how the relative-path bug was found.
+
+**Open, and outside both projects:** order-scrapers defaults `[lidl] input` to
+`~/shopping-analyzer/lidl_receipts.json` while this project reads
+`~/regnskap/lidl_receipts.json`. Nothing breaks until someone runs the fetch
+without a `~/.config/order-scrapers/config.toml`; then there are two files.
+
+Original notes follow.
+
+## 6b. (historical) Original notes on the Lidl+ download
 
 Migrated from inventory-md's TODO on 2026-07-29: it was filed there as "the
 integration with the Lidl+ shopping history downloader should be scripted better

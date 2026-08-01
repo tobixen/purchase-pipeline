@@ -68,6 +68,10 @@ except ImportError:  # pragma: no cover
 
 DEFAULT_TINGBOK_URL = "https://tingbok.plann.no"
 
+#: The Lidl receipts file, produced by ``lidl-history --fetch`` in
+#: `order-scrapers <https://github.com/tobixen/order-scrapers>`_ — see the README.
+DEFAULT_RECEIPTS = Path.home() / "regnskap" / "lidl_receipts.json"
+
 #: Receipt name suffix Lidl prints for weighed (per-kilogram) goods.
 _KG_SUFFIX = "НА КГ"
 
@@ -291,7 +295,9 @@ def parse_lidl_receipt(
         "receipt_total": net,
         "receipt_total_gross": gross,
         "receipt_discount_total": discount_total,
-        "source": source,
+        # A receipt fetched by ``lidl-history`` carries its own provenance stamp,
+        # which is more specific than the name of the file it sits in.
+        "source": receipt.get("source") or source,
         "items": items,
         "loose_photos": [],
     }
@@ -368,7 +374,7 @@ def main() -> None:  # pragma: no cover - thin CLI wiring
     parser.add_argument(
         "--receipt",
         type=Path,
-        default=Path.home() / "regnskap" / "lidl_receipts.json",
+        default=DEFAULT_RECEIPTS,
         help="Path to lidl_receipts.json (newest receipt by purchase date is used)",
     )
     parser.add_argument("--receipt-id", default=None, help="Import the receipt with this id instead of the newest")

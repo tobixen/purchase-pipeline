@@ -43,7 +43,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from purchase_pipeline.shop_import import parse_lidl_receipt
+from purchase_pipeline.shop_import import DEFAULT_RECEIPTS, parse_lidl_receipt
 from purchase_pipeline.staging import require_flat
 
 try:
@@ -467,7 +467,7 @@ def main() -> None:  # pragma: no cover - thin CLI wiring
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_lidl = sub.add_parser("import-lidl")
-    p_lidl.add_argument("--receipt", type=Path, default=Path.home() / "regnskap" / "lidl_receipts.json")
+    p_lidl.add_argument("--receipt", type=Path, default=DEFAULT_RECEIPTS)
     p_lidl.add_argument("--all", action="store_true", help="Import every receipt, not just the latest")
     p_lidl.add_argument("--shop", default="Lidl Varna")
     p_lidl.add_argument("--ledger", type=Path, default=default_ledger)

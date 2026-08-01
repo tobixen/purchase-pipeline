@@ -84,6 +84,28 @@ An entry exists in the registry only for a chain whose receipt has actually been
 read, and must carry a `source` naming it. An unrecorded chain prints as
 unrecorded — a guessed layout gets trusted exactly like a known one.
 
+## Where the Lidl receipts come from
+
+`shop-import --receipt` and `purchase-ledger lidl` both read
+`~/regnskap/lidl_receipts.json`, which this project does **not** produce.
+Building a purchase history out of a web shop is
+[order-scrapers](https://github.com/tobixen/order-scrapers)' job — it is AGPL
+precisely so it can sit next to
+[shopping-analyzer](https://github.com/tobixen/shopping-analyzer), the project
+that talks to Lidl's ticket API with cookies from a logged-in browser:
+
+```bash
+lidl-history --fetch --country bg     # order-scrapers; log in to Lidl+ first
+```
+
+That refreshes `lidl_receipts.json` and ingests it into order-scrapers' own
+JSONL history. This pipeline then reads the **raw** file rather than that JSONL,
+because the raw receipts carry the per-line discounts and net totals the ledger
+books and Open Prices publishes.
+
+Point `[lidl] input` in `~/.config/order-scrapers/config.toml` at the same path
+this project defaults to, or the two will disagree about where the file lives.
+
 ## Which line was that barcode?
 
 A scan proves an EAN was in the basket. It says nothing about which till string

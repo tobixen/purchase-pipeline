@@ -54,6 +54,13 @@ class TestParseLidlReceipt:
     def test_source_recorded(self):
         assert parse_lidl_receipt(LIDL_RECEIPT)["source"] == "lidl_receipts.json"
 
+    def test_receipts_own_source_stamp_wins(self):
+        """`lidl-history` stamps each fetched receipt with where it came from;
+        that provenance is more specific than the file it happens to sit in, and
+        the header keys already work this way for `shop`/`store`/`currency`."""
+        receipt = {**LIDL_RECEIPT, "source": "shopping-analyzer get_data.py update --country bg"}
+        assert parse_lidl_receipt(receipt, source="lidl_receipts.json")["source"].startswith("shopping-analyzer")
+
     def test_one_row_per_item(self):
         assert len(parse_lidl_receipt(LIDL_RECEIPT)["items"]) == 3
 
