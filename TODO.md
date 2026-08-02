@@ -1,15 +1,13 @@
 # TODO — purchase-pipeline
 
-**Every task here is done** (2026-07-25/31) — kept below with a `DONE` note
+**Every task here is done** (2026-07-25/08-02) — kept below with a `DONE` note
 rather than deleted, because each records a real regression case worth keeping.
-Two things are open and neither is a task in this file:
+One thing is open, and it is not a task in this file:
 
 * **inventory-md's half of task 7** — best-before OCR quality against dot-matrix
   print, foil and embossing. Tracked in `~/inventory-md/docs/TODO.md`. This
   project's half (association) is done; nothing here can improve a date the OCR
   could not read.
-* **`~/.claude/skills/` is an unversioned gitlink** (task 0), the only item in
-  this file that was never about code in this repository.
 
 Task 6 was **done in another project** — the Lidl fetch belongs to
 [order-scrapers](https://github.com/tobixen/order-scrapers), which already owned
@@ -57,12 +55,17 @@ duplicated now points at inventory-md's `docs/ADDING-ITEMS.md`. Both
 now allowlist the console scripts. `~/bin/check-grocery-ledger` is deleted from
 the dotfiles repo, the project being user-installed so `~/.local/bin` carries it.
 
-Still open from this task:
+Done from this task (2026-07-28), by whoever got there first: `~/.claude/skills/`
+was registered as a gitlink (mode 160000) with no `.gitmodules` and no repo
+inside, so the personal skill edits were unversioned. `~/.claude` commit
+`eb97411` "actually track skills/ instead of a phantom submodule" fixed it;
+`~/.claude-personal/skills` is a symlink into the same tracked directory.
 
-* `~/.claude/skills/` is registered in `~/.claude` as a gitlink (mode 160000)
-  with no `.gitmodules` and no repo inside, so the personal skill edits there are
-  unversioned. Worth fixing before relying on them. **This is the only item left
-  in this file that is not about code in this repository.**
+Done from this task (2026-08-02): the personal skill
+(`~/.claude/skills/process-shopping/SKILL.md`) was refreshed — it still named
+every command by its pre-migration path, and told the reader to take
+`jq '.[-1]'` of `lidl_receipts.json` as the newest trip, which is exactly the
+non-chronological-id trap `select_receipt` exists to avoid.
 
 Done from this task (2026-07-29):
 
@@ -402,10 +405,13 @@ Still not automated, deliberately: the browser login. And the fetch has not run
 against the live API — it needs a browser session; it was exercised end to end
 against a stub downloader, which is how the relative-path bug was found.
 
-**Open, and outside both projects:** order-scrapers defaults `[lidl] input` to
+Settled (2026-08-02): order-scrapers defaults `[lidl] input` to
 `~/shopping-analyzer/lidl_receipts.json` while this project reads
-`~/regnskap/lidl_receipts.json`. Nothing breaks until someone runs the fetch
-without a `~/.config/order-scrapers/config.toml`; then there are two files.
+`~/regnskap/lidl_receipts.json`, so a fetch would have started a second history
+file. Fixed in configuration rather than code — `~/.config/order-scrapers/
+config.toml` now sets `[lidl] input/analyzer/country/browser` — because
+order-scrapers' own TODO says its defaults should deliberately stay out of
+`~/regnskap`.
 
 Original notes follow.
 
