@@ -342,6 +342,46 @@ osm-resolve --save-as "CHAIN TOWN STREET" --pick TYPE:ID        # after the huma
 openprices-publish --coords-from-photo PHOTO                    # EXIF GPS → the command above
 ```
 
+**Before trusting a photo's GPS, check when the photo was taken against the time
+printed on the receipt.** A receipt photographed in the shop carries the shop's
+position; the same receipt photographed later carries wherever you happened to be,
+and nothing in the EXIF says which you have. The receipt prints its own timestamp,
+so the two can simply be subtracted:
+
+```bash
+exiftool -n -p '$FileName|$DateTimeOriginal|$GPSLatitude|$GPSLongitude' PHOTO...
+```
+
+Read the delta as a confidence rating, not a yes/no:
+
+| Δ (photo − receipt) | Reading |
+|---|---|
+| seconds, either sign | in the shop — the camera clock is simply a little off |
+| under ~2 min | trustworthy |
+| 5–15 min | probably still the right building, but widen `--radius` and be sceptical |
+| hours or days | **the photo is worthless as a location** — it is your own position |
+
+A *negative* delta of seconds is normal and not a red flag: it means the camera
+clock runs slow, not that the photo predates the purchase. Verified 2026-08-05
+across eleven receipts: a chandlery shot 27 s *before* its receipt printed and a
+grocer shot 1 m 52 s after both landed within 3–13 m of the correct mapped shop,
+and a Billa photo taken in-store fell 15 m from an OSM node that had been
+confirmed by hand on an earlier trip — an independent check that the method
+works. In the same batch three receipts re-photographed at home days later all
+returned the boat's mooring, one of them ~120 km from the shop that issued the
+receipt. That is exactly the failure the "never auto-geocode" rule above exists
+to prevent, and the timestamp is what detects it *before* a wrong location is
+cached and published.
+
+Two corollaries worth keeping in mind:
+
+- When the delta is large, the answer is not a wider radius — it is that this
+  photo cannot locate the shop at all. Find another photo from the trip, or ask.
+- The check also validates a *good* result. `osm-resolve` scoring a candidate 1.0
+  a few metres away is much more convincing when the photo was demonstrably taken
+  at the till, and it is worth saying so when handing the map link over for
+  confirmation.
+
 If `osm-resolve` finds nothing the shop is unmapped, and `osm-add-shop` can put it
 on the map — but **that is the user's call, never the agent's**, and it is the one
 write here that lands in a public shared database under their name:
@@ -463,6 +503,18 @@ This skill and the scripts are quite fresh.  For each run, try to pinpoint probl
   evidence only when the source is known to cover the question — `osm-add-shop`
   probes for that, `osm-resolve` does not, so do not read its "no POI found" as
   proof a shop is unmapped if you passed `--endpoint`.
+* Photo-GPS staleness is checked by hand (2026-08-05, documented in Stage 4): the
+  agent has to run `exiftool` itself and subtract the receipt's printed time.
+  `--coords-from-photo` already reads the EXIF, so it could print
+  `DateTimeOriginal` alongside the coordinates, and — given `--date` or a staging
+  file — say outright how far the photo is from the purchase and refuse to suggest
+  an `osm-resolve` command for a photo taken days later. Worth doing: on the
+  2026-08-05 run, three of eleven receipt photos were re-shots carrying the boat's
+  mooring rather than the shop, and only the manual subtraction caught them.
+* Overpass was down or rate-limiting for much of 2026-08-05 (504s and 429s across
+  `osm-resolve` and `osm-add-shop`). Nothing is wrong with the tools — they fail
+  cleanly with the HTTP error and `osm-add-shop` correctly refuses to write when its duplicate check
+  cannot run — but a run can stall on it. Consider a documented fallback mirror.
 * Fixed 2026-07-09 (Бурлекс run friction):
   * `add_item` crashed on YAML-native dates (`bb: 2026-07-12` → `datetime.date`) —
     now coerced; staging bb values no longer need quoting.
