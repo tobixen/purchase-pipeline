@@ -534,6 +534,24 @@ This skill and the scripts are quite fresh.  For each run, try to pinpoint probl
   training/regression corpus. When enough accumulate, build a regression suite for
   the extractor and try multi-crop/rotation retries; report multiple checksum-valid
   candidates as needs-review instead of picking one.
+  * **A third failure mode, worse than a miss (2026-08-05): a confident wrong
+    answer.** `IMG_20260726_184535.jpg` is a sharp, well-lit Parodontax barcode
+    whose digits are plainly legible as `5054563216953`; the extractor returned
+    `0085100000563` and resolved it to a "Hillman 851563 brass plated utility door
+    pull". Nothing downstream could tell that was wrong — it is a single decode,
+    not a conflict, and it looks up to a real product, so `shop-import` had no
+    reason to flag it and a reviewer skimming the staging file would not either.
+    Contrast the same run's honest failures: four frames returned NO_DECODE
+    (including `3800069005445`, Шуменско, equally legible) which at least announce
+    themselves. Worth checking whether the decoder is padding a UPC-E expansion or
+    reading a truncated crop; and until it is understood, treat a decoded EAN whose
+    product description does not fit the receipt line as suspect rather than as
+    evidence, even when it resolves.
+  * Corpus note: 55 photos from 2026-07-26…08-04 are now in
+    `~/s/photos.tobixen/processed/`, with the confirmed answers in the seven
+    `staging/shopping-2026-0[78]-*.yaml` files — including four EANs read by hand
+    (`3800069005445`, `5054563216953`, `8033137194375`, `8033137035135`) that the
+    extractor missed or got wrong, which are the interesting regression cases.
 * Fixed 2026-07-22 (2026-07-21 Lidl run friction):
   * A staging row's `bb_est: true` was silently dropped by `inventory_import.py`, so
     shelf-life *guesses* were written as printed dates (9 rows on 2026-07-21, 9 on
