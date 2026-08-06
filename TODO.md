@@ -11,7 +11,33 @@ docs and CHANGELOG; commit with `git-ai-commit`; don't push without being asked.
 
 ---
 
-## `osm-add-shop --commit` has never run against the live API
+## DONE 2026-08-06: `osm-add-shop --commit` has run against the live API
+
+Created `NODE:14077646501` — ЛЗ Яхтен магазин, a chandlery at Варна Морска гара
+that was genuinely absent from OSM. The whole path is now exercised: live
+Overpass duplicate check, OAuth token, changeset open/create/close. The user
+registered the OAuth application themselves, as this item always said they would
+have to.
+
+Two things to fix, both found by this first real run:
+
+* **`osmapi` is imported at the point of upload, so a missing dependency fails
+  the run at the very end** — after the duplicate check, the node preview and the
+  changeset preview have all been printed, and after an Overpass round-trip has
+  been spent. It is in the `publish` extra, which had evidently been installed
+  without it (`openfoodfacts`, `Pillow` and `niquests` were all present). Import
+  it, or probe for it, before any network call: failing in the first second with
+  "pip install osmapi" is strictly better than failing in the last.
+* **`osm-auth` cannot be driven through a non-interactive stdin.** The workflow
+  guide tells the agent to hand interactive commands to the user via the `!`
+  prefix, but that gives the process no tty, so `input("code: ")` dies with
+  `EOFError` after the authorize URL has already been printed. Piping the code in
+  is not a workaround either, because the PKCE verifier is regenerated per run and
+  the code is bound to the previous challenge. Making it resumable — persist the
+  verifier next to the printed URL, accept `--code` on a second invocation — would
+  let the whole flow be driven from a session instead of needing a second terminal.
+
+## Superseded: `osm-add-shop --commit` has never run against the live API
 
 Every other path is tested and was rehearsed against live Overpass, but the
 upload itself is unexercised. It needs two things that cannot be arranged on
