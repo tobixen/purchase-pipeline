@@ -111,22 +111,6 @@ counter and own-brand snacks. The two writers should share whatever
 somewhere: `tingbok-push` derives `lidl-` from the staging `shop:` field, so the
 same derivation needs the normalised branch key (see the next item).
 
-## Bug: `location: food2` silently lands items in `food2-lost`
-
-Found 2026-08-05, but it also happened on 2026-07-10 (`peanuts-roasted-2026-07-10`
-is still sitting there), so it has been misfiling quietly for a while.
-
-`food2` is a container whose items all live in sub-containers (`food2-bottom`,
-`food2-box`, `food2-front`, …, `food2-lost`). Asked to insert into `food2`,
-`inventory_import` appends into the last sub-section rather than the container
-itself — and the last one happens to be `food2-lost`, whose description begins
-"This has either been eaten (possibly some of it), or disappeared into food1".
-So newly bought food is filed as already-lost, with no warning.
-
-Whatever the right insertion point is, silently choosing a sub-container is
-wrong: either write into the parent, or fail and say the container has no direct
-item list. Five items had to be `inventory-md move`d out by hand.
-
 ## `shop-import` writes a chain name that can never resolve
 
 Found 2026-08-05. `shop-import` sets `shop: Lidl Varna` from the receipt, but
