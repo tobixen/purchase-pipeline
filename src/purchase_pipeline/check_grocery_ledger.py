@@ -19,8 +19,8 @@ Rule (per tobixen, 2026-07-21):
   - everything else (dining, child-support, family, harbour due, ...) -> exempt.
 
 A grocery/equipment diary line is considered "covered" when the ledger holds, on
-the same date, a shop whose line items sum to the diary amount (± a small
-tolerance). Shop names are not matched (the diary description and the ledger
+the same date and in the same currency, rows summing to the diary amount (± a
+small tolerance). Shop names are not matched (the diary description and the ledger
 `shop` field are worded differently); date + summed total is enough and robust.
 
 Lines whose amount is a placeholder (`xx.xx`, `XX`, `???`, `5?`) can't be
@@ -44,7 +44,7 @@ from purchase_pipeline.shopping_context import read_diary_text
 # Expense classes that MUST carry a ledger entry.
 REQUIRE_LEDGER = {"groceries", "equipment"}
 
-# EUR tolerance when matching a diary total to a ledger shop-day sum.
+# Tolerance (in the line's own currency) when matching a diary total to a ledger shop-day sum.
 TOLERANCE = 0.02
 
 DEFAULT_DIARY = Path.home() / "solveig" / "diary-2026.md"
@@ -58,7 +58,7 @@ _EXPENSE_RE = re.compile(r"^\*\s*([A-Za-z]{3})\s+(\S+)\s*-\s*([\w-]+)\s*-\s*(.*)
 
 
 def parse_amount(raw: str) -> float | None:
-    """Return the numeric EUR amount, or None for a placeholder (xx.xx/XX/???)."""
+    """Return the numeric amount, or None for a placeholder (xx.xx/XX/???)."""
     cleaned = raw.replace(",", ".")
     try:
         return float(cleaned)
@@ -101,15 +101,17 @@ def parse_diary(path: Path) -> list[dict]:
     return expenses
 
 
-def ledger_cents_by_date(path: Path) -> dict[str, list[int]]:
-    """Ledger row totals (in integer cents) grouped by purchase date.
+def ledger_cents_by_date(path: Path) -> dict[tuple[str, str], list[int]]:
+    """Ledger row totals (in integer cents) grouped by (purchase date, currency).
+
+    Rows without a ``currency`` are EUR, the ledger's historical default.
 
     Grouped by date only, not shop: a diary line is one card charge / receipt,
     but a shop can have several charges in a day (Lidl 40.29 + 1.02) and a day
     can span several shops. So we ask whether the diary amount is a *subset sum*
     of the day's ledger rows — which a bare per-(date,shop) sum can't answer.
     """
-    by_date: dict[str, list[int]] = defaultdict(list)
+    by_date: dict[tuple[str, str], list[int]] = defaultdict(list)
     if not path.exists():
         return by_date
     for raw in path.read_text(encoding="utf-8").splitlines():
@@ -120,7 +122,8 @@ def ledger_cents_by_date(path: Path) -> dict[str, list[int]]:
         date = (row.get("date") or "")[:10]
         total = row.get("total")
         if date and total is not None:
-            by_date[date].append(round(float(total) * 100))
+            currency = (row.get("currency") or "EUR").upper()
+            by_date[(date, currency)].append(round(float(total) * 100))
     return by_date
 
 
@@ -133,11 +136,11 @@ def _reachable_sums(cents: list[int]) -> set[int]:
     return reachable
 
 
-def is_covered(exp: dict, by_date: dict[str, list[int]]) -> bool:
-    """The diary amount is a subset sum of that date's ledger rows (± tolerance)."""
-    if exp["amount"] is None or exp["currency"] != "EUR":
+def is_covered(exp: dict, by_date: dict[tuple[str, str], list[int]]) -> bool:
+    """The diary amount is a subset sum of that date's same-currency ledger rows (± tolerance)."""
+    if exp["amount"] is None:
         return False
-    rows = by_date.get(exp["date"])
+    rows = by_date.get((exp["date"], exp["currency"]))
     if not rows:
         return False
     target = round(exp["amount"] * 100)
@@ -183,17 +186,20 @@ def main(argv: list[str] | None = None) -> int:
 
     checked = sum(1 for e in expenses if e["type"] in require)
     if not ns.quiet:
-        print(f"Checked {checked} '{'/'.join(sorted(require))}' diary lines against {len(by_date)} ledger days.")
+        print(
+            f"Checked {checked} '{'/'.join(sorted(require))}' diary lines against {len({d for d, _ in by_date})} ledger days."
+        )
 
     if missing:
         print(f"\n❌ {len(missing)} required expense(s) not covered by the ledger:")
         for e in missing:
-            rows = by_date.get(e["date"]) or []
+            cur = e["currency"]
+            rows = by_date.get((e["date"], cur)) or []
             if not rows:
-                reason = "no ledger rows on this date"
+                reason = f"no {cur} ledger rows on this date"
             else:
-                reason = f"{len(rows)} ledger row(s) on this date sum to EUR {sum(rows) / 100:.2f} — no subset matches"
-            print(f"  {e['date']}  EUR {e['amount']:.2f}  [{e['type']}]  {e['description']}")
+                reason = f"{len(rows)} {cur} ledger row(s) on this date sum to {cur} {sum(rows) / 100:.2f} — no subset matches"
+            print(f"  {e['date']}  {cur} {e['amount']:.2f}  [{e['type']}]  {e['description']}")
             print(f"       ↳ {reason}")
     if unverifiable:
         print(
@@ -201,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
             f"(placeholder — likely an open reconciliation):"
         )
         for e in unverifiable:
-            print(f"  {e['date']}  EUR {e['amount_raw']}  [{e['type']}]  {e['description']}")
+            print(f"  {e['date']}  {e['currency']} {e['amount_raw']}  [{e['type']}]  {e['description']}")
 
     if not missing and not unverifiable:
         if not ns.quiet:

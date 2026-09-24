@@ -85,8 +85,8 @@ class TestLedger:
 
     def test_groups_cents_by_date(self, tmp_path):
         by_date = ledger_cents_by_date(self._ledger(tmp_path))
-        assert by_date["2026-07-17"] == [4133]
-        assert sorted(by_date["2026-07-18"]) == [102, 4029]
+        assert by_date[("2026-07-17", "EUR")] == [4133]
+        assert sorted(by_date[("2026-07-18", "EUR")]) == [102, 4029]
 
     def test_missing_file_is_empty(self, tmp_path):
         assert ledger_cents_by_date(tmp_path / "nope.jsonl") == {}
@@ -104,9 +104,21 @@ class TestLedger:
         by_date = ledger_cents_by_date(self._ledger(tmp_path))
         assert not is_covered({"amount": 7.00, "currency": "EUR", "date": "2026-07-18"}, by_date)
 
-    def test_non_eur_is_never_covered(self, tmp_path):
+    def test_currency_must_match(self, tmp_path):
+        """Same date, same number, different currency is not a match."""
         by_date = ledger_cents_by_date(self._ledger(tmp_path))
         assert not is_covered({"amount": 40.29, "currency": "BGN", "date": "2026-07-18"}, by_date)
+
+    def test_non_eur_covered_by_same_currency_row(self, tmp_path):
+        """The 2026-08 bug: a NOK diary line with a matching NOK ledger row was flagged."""
+        f = tmp_path / "purchases.jsonl"
+        f.write_text(
+            json.dumps({"date": "2026-08-15", "shop": "Lyreco Tromsø", "total": 205.0, "currency": "NOK"}) + "\n",
+            encoding="utf-8",
+        )
+        by_date = ledger_cents_by_date(f)
+        assert is_covered({"amount": 205.0, "currency": "NOK", "date": "2026-08-15"}, by_date)
+        assert not is_covered({"amount": 205.0, "currency": "EUR", "date": "2026-08-15"}, by_date)
 
 
 class TestMain:
@@ -144,6 +156,13 @@ class TestMain:
         rc, out = self._run(tmp_path, diary=diary)
         assert rc == 1
         assert "no subset matches" in out
+
+    def test_report_uses_the_diary_currency(self, tmp_path):
+        diary = "## 2026-07-18\n\n* NOK 99.99 - equipment - Lyreco\n"
+        rc, out = self._run(tmp_path, diary=diary)
+        assert rc == 1
+        assert "NOK 99.99" in out
+        assert "EUR 99.99" not in out
 
     def test_since_filters_older_lines(self, tmp_path):
         rc, out = self._run(tmp_path, "--since", "2026-07-18")
