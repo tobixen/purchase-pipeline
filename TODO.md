@@ -125,6 +125,51 @@ so this overlaps with "derive the Billa branch key from the receipt" above; it i
 the same feature seen from the other end. Until then, `shop-import` could at
 least warn that the shop it wrote will not resolve against the cache.
 
+## `purchase-pipeline` resolves `inventory.md` relative to the cwd
+
+Found 2026-09-24 on the Aug–Sep receipt backlog. Run from anywhere but the
+inventory directory, every file fails with "inventory.md not found" unless
+`--inventory ABS_PATH` is given. The staging file sits in `INVENTORY/staging/`,
+so the default could be derived from its path instead.
+
+## `shop-import --help` does not document the hand-transcribed receipt format
+
+Found 2026-09-24. The shape that works is `{date, shop, currency, total,
+items[{name, price, quantity, unit?, unit_price?}]}`, and today the only way to
+learn it is to read the code or an earlier session's JSON.
+
+## A malformed staging file crashes the whole batch with a raw traceback
+
+Found 2026-09-24. A colon inside an unquoted `name:` value made PyYAML raise, and
+`purchase-pipeline A.yaml B.yaml …` died with a traceback naming neither the
+file nor the line. Parse every file up front, before any stage runs, and report
+`FILE:LINE: message`.
+
+## The inventory stage does not verify its writes survived
+
+Found 2026-09-24. A parallel session rebuilt the Oslo house inventory's `inventory.md`
+between the pipeline's write and the commit, and the new item lines vanished
+without a word. Before marking the stage
+done, check that every `inventory_id` it wrote is still present.
+
+## `osm-resolve` is useless while Overpass is down
+
+Found 2026-09-24. overpass-api.de answered 504/429 for most of two sessions and
+the mirrors timed out. The main API's `GET /api/0.6/map?bbox=…` still answered,
+and found Carrefour București by hand with `curl`; for a small radius it can
+answer the same "what is mapped here" question. A fallback (or `--endpoint osm-api`)
+would keep the lookup inside the listed commands, and would give `osm-add-shop`
+a duplicate check that works on such days.
+
+## An exact tingbok candidate may override ambiguous photo evidence
+
+Found 2026-09-24 in review, not yet reproduced. When `associate_photos` refuses
+to place a line because several photographed EANs match it, the code review read
+`fill_eans_from_candidates` (`shop_import.py`) as filling `ean` from a score-1.0
+candidate anyway — so the photos say "ambiguous" and the staging file says
+certain. Check with a test before changing anything; if it holds, a line the
+photo matcher flagged should be left for review.
+
 ## Not this project: best-before OCR quality
 
 The other half of "populate `ean` + `bb` without human photo inspection".
