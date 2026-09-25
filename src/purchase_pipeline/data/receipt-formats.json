@@ -22,6 +22,16 @@
     "source": "Billa Sozopol, 2026-07-24 (hand-transcribed from a photo)"
   },
 
+  "Coop Extra": {
+    "branch_address": "header",
+    "branch_address_note": "The header names the branch by place only (`Furuset`), with `Butikk 2630-1` as the store number; the legal entity (COOP ØST SA) is a regional co-op, not the store.",
+    "multiplier_line": "follows",
+    "multiplier_line_note": "Every line PRICE is printed one line ABOVE its item name: on 2026-09-25 `39.90` stands alone above `BRINGEBÆR 125G`, whose own line shows the next item's `37.40`, and the last price (42.92) sits on `LOLLIPOP 12PK` while `SALATBAR` shows none. Read the price column shifted up by one. A weighed item's `0.232 kg  185.00 kr/kg` line FOLLOWS its name; 0.232 × 185 = 42.92 confirms the shift.",
+    "discounts_note": "No discount lines on the one receipt read (`Spart 0.00`). Cash payments add a signed `øreavrunding` line (-0.12) that rounds to whole kroner: the items sum to the unrounded `Sum` (209.12), `Totalt` is the rounded 209.00.",
+    "weighed_items": "item name line, then an indented `N kg  P kr/kg` line below it; the price is on the line above the name like every other item",
+    "source": "Coop Extra Furuset, 2026-09-25 (read from a photo, IMG_20260925_084043.jpg)"
+  },
+
   "Lidl": {
     "multiplier_line": "unknown",
     "multiplier_line_note": "Never transcribed from a photo — Lidl trips are imported from the lidl_receipts.json export, which carries one object per line item with explicit quantity, so there is no multiplier line to misread. The printed receipt's layout is genuinely unrecorded; read it before adding one here.",
