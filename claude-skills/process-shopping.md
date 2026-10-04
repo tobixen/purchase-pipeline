@@ -53,11 +53,20 @@ deliberately everything you'd otherwise `tail`/`grep` for — so don't.
 **Looking something up in the inventory itself** (does an item already exist?
 what's in a section?) — use the parsed JSON, never `grep inventory.md`:
 ```bash
-inventory-md lookup --match TERM   # existing items by id/name (e.g. an EAN already stocked)
-inventory-md container ID          # contents of a section/container (e.g. 'floating')
+inventory-md lookup --match TERM $INVENTORY_DIR/inventory.json   # existing items by id/name
+inventory-md container ID $INVENTORY_DIR/inventory.json          # contents of a section/container (e.g. 'floating')
+inventory-md ean EAN -d $INVENTORY_DIR                           # a barcode: stocked already? known to tingbok?
+inventory-md vocabulary lookup -d $INVENTORY_DIR TERM            # category slug
 ```
 `jq` on `inventory.json` covers anything else structured. These are exact and
 allowlisted; grepping the markdown is neither.
+
+**Always pass the inventory path**, as above. The session's working directory is
+usually somewhere else (the diary repo, for one), and without the path these
+commands read `./inventory.json`: `lookup` and `container` then fail outright, and
+`vocabulary lookup` silently falls back to tingbok. The same goes for
+`purchase-pipeline`: give it `--inventory $INVENTORY_DIR/inventory.md --ledger $LEDGER`.
+No global default exists on purpose, because one user may keep several inventories.
 
 ## User instructions
 
@@ -157,7 +166,7 @@ on them (`vegetables`, `fruit`, `nuts`, `meat`, `dairy`, `cheese`, `misc`, …).
 A broad/parent category is allowed only when no narrower concept fits — then
 exempt that item with the tag `category-broad-ok` (or run with
 `--allow-broad-categories`). Get the canonical slug with
-`inventory-md vocabulary lookup TERM` — it reports the concept `id` to use,
+`inventory-md vocabulary lookup -d $INVENTORY_DIR TERM` — it reports the concept `id` to use,
 checks the local `vocabulary.json` first and transparently queries tingbok for
 concepts not yet in it (exit code 1 in that case, with the tingbok result still
 printed — that's expected for a category new to your inventory). Don't invent
@@ -222,15 +231,23 @@ Once the staging file is reviewed, it runs the ledger → inventory → tingbok
 steps in order (reading/advancing the `status:` block, resumable) and then
 validates (`inventory-md parse` + `inventory-md-check-quality`):
 ```bash
-purchase-pipeline $INVENTORY_DIR/staging/shopping-YYYY-MM-DD.yaml           # dry run — plan + previews
-purchase-pipeline $INVENTORY_DIR/staging/shopping-YYYY-MM-DD.yaml --commit  # run pending stages + validate
+PP="purchase-pipeline --inventory $INVENTORY_DIR/inventory.md --ledger $LEDGER"   # shorthand below
+$PP $INVENTORY_DIR/staging/shopping-YYYY-MM-DD.yaml           # dry run — plan + previews
+$PP $INVENTORY_DIR/staging/shopping-YYYY-MM-DD.yaml --commit  # run pending stages + validate
 ```
+(`$PP` is shorthand for this document only. Spell the command out in full when
+running it, since a shell variable would be one more unlisted command.)
+
+The closing validation (`inventory-md parse`) re-resolves every category and EAN
+against tingbok. Over a slow link it can take more than ten minutes, so run the
+`--commit` in the background, and do the diary and the OFF/Open Prices dry runs
+meanwhile.
 **Several shops in one day → one invocation**, not one per file: the closing
 validation checks all of `inventory.md` and takes about two minutes, so running
 it per file repeats the same answer and makes concurrent runs race on
 `inventory.json`.
 ```bash
-purchase-pipeline $INVENTORY_DIR/staging/shopping-YYYY-MM-DD-*.yaml --commit  # stages per file, validate once
+$PP $INVENTORY_DIR/staging/shopping-YYYY-MM-DD-*.yaml --commit  # stages per file, validate once
 ```
 A failure stops the run at that file; the later ones are not started and nothing
 is validated, so fix and re-run the same command — the finished files' `status:`
@@ -405,6 +422,15 @@ Cache keys must name a branch (`Billa Sozopol ул. Републиканска 5
 `osm-resolve` refuses a one-word key, because a chain-only key would then resolve
 exactly and silently to whichever branch was saved first.
 
+**A line that failed** (a `FAIL 400` in the output) is retried on its own,
+against the proof that was already uploaded, so that the lines which went through
+are not duplicated:
+```bash
+openprices-publish --shop "Shop" --date YYYY-MM-DD --proof-id NNN --only EAN [--only EAN …] [--commit]
+```
+`--proof` is optional with `--proof-id`. `--only` takes the bare code or tingbok's
+shop-prefixed key (`lidl-20358037`) alike.
+
 PRODUCT prices must not set `price_per`. Both OFF and Open Prices are **public** —
 treat as irreversible-ish (Open Prices rows are deletable; you own them).
 
@@ -446,10 +472,9 @@ inventory's business; deciding what a purchase *means* is not.
 
 `tingbok` (`GET/PUT /api/ean/{ean}`, `GET /api/ean/search?receipt_name=`) is the
 EAN/category/price aggregator. There is **no `ean_cache.json`** — use tingbok.
-Category/concept lookup goes through `inventory-md vocabulary lookup TERM` (no
-raw curl). Ad-hoc **EAN** lookup (an EAN that didn't come through
-`extract_barcodes.py`, which resolves scanned codes itself) has no wrapper yet —
-a read-only `curl GET /api/ean/{ean}` is the sanctioned fallback for that one case.
+Category/concept lookup goes through `inventory-md vocabulary lookup -d DIR TERM`,
+and ad-hoc **EAN** lookup (an EAN read by hand off a photo the scanner missed)
+through `inventory-md ean EAN -d DIR` — no raw curl for either.
 
 ## TODO
 
@@ -476,11 +501,14 @@ This skill and the scripts are quite fresh.  For each run, try to pinpoint probl
     while `qty:3 mass:150g` (per-pack) was the original wish — pick one and document it.
   * The "rename ledger `qty`→`purchase-qty`" idea is **not** worth doing: the importer
     already distinguishes `mass`/`volume` from the count, so it would be churn.
-* Ad-hoc EAN lookup (2026-07-02): category lookups now go through
-  `inventory-md vocabulary lookup`, but looking up a *manually read* EAN (from a
-  photo the scanner missed) still needs a raw `curl GET /api/ean/{ean}` →
-  permission prompt. Consider `inventory-md ean EAN` or a `tingbok_lookup.py`
-  helper so the whole skill runs unattended.
+* Ad-hoc EAN lookup (2026-07-02) — **done**: `inventory-md ean EAN -d DIR`.
+  Whether the product is in **OFF** (to decide on an `off-upload`) still takes a
+  raw `curl` to `world.openfoodfacts.org/api/v2/product/EAN.json`; `inventory-md
+  ean` could report OFF presence and its missing photo roles too.
+* inventory-md read commands disagree on how they take the inventory (2026-10-04):
+  `lookup`/`container`/`expiring` a positional `inventory.json`, `ean`/`vocabulary`
+  `-d DIR`, `add`/`edit`/`move` `--file inventory.md`. One `-d DIR` on all of them
+  would make the guide's commands uniform.
 * Shop OSM cache too coarse — Lidl/Billa have **many branches per city**, so even
   "Lidl Varna" names one specific store.
   * Done: `match_shop_osm` resolves on an **exact** (case-insensitive) cache key only,

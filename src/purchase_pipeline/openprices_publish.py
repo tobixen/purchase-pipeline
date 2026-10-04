@@ -152,6 +152,21 @@ def receipt_currency(rows: list[dict[str, Any]], shop: str, date: str) -> str:
     return currencies.pop()
 
 
+def product_rows(
+    ledger: list[dict[str, Any]], shop: str, date: str, only: list[str] | None = None
+) -> list[dict[str, Any]]:
+    """The ledger rows of *shop*'s receipt on *date* that become PRODUCT prices.
+
+    *only* narrows them to the given codes, bare or tingbok-prefixed, so a line
+    that failed can be re-sent without duplicating the ones that went through.
+    """
+    rows = [r for r in ledger if r.get("shop") == shop and r.get("date") == date and r.get("ean")]
+    if only:
+        wanted = {off_code(c) for c in only}
+        rows = [r for r in rows if off_code(str(r["ean"])) in wanted]
+    return rows
+
+
 def _resolve_location(shop: str, osm_arg: str | None) -> tuple[str, int]:
     """Resolve a shop's confirmed OSM location from the branch-keyed cache.
 
@@ -216,6 +231,13 @@ def main() -> None:  # pragma: no cover - network / CLI wiring
     parser.add_argument(
         "--no-products", action="store_true", help="Skip the EAN/PRODUCT prices (e.g. category-only run)"
     )
+    parser.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        metavar="EAN",
+        help="Publish only these PRODUCT lines (repeatable), e.g. to retry a failed one with --proof-id",
+    )
     parser.add_argument("--env", choices=["org", "net"], default="org")
     parser.add_argument("--commit", action="store_true")
     args = parser.parse_args()
@@ -233,7 +255,11 @@ def main() -> None:  # pragma: no cover - network / CLI wiring
         return
 
     # Validate args required for normal publish flow.
-    missing = [f"--{f}" for f, v in [("shop", args.shop), ("date", args.date), ("proof", args.proof)] if v is None]
+    missing = [
+        f"--{f}"
+        for f, v in [("shop", args.shop), ("date", args.date), ("proof", args.proof or args.proof_id)]
+        if v is None
+    ]
     if missing:
         parser.error(f"{', '.join(missing)} required for publishing")
 
@@ -246,11 +272,7 @@ def main() -> None:  # pragma: no cover - network / CLI wiring
         currency = receipt_currency(ledger, args.shop, args.date)
     except ValueError as exc:
         sys.exit(str(exc))
-    rows = (
-        []
-        if args.no_products
-        else [r for r in ledger if r.get("shop") == args.shop and r.get("date") == args.date and r.get("ean")]
-    )
+    rows = [] if args.no_products else product_rows(ledger, args.shop, args.date, args.only)
     if not rows and not category_specs:
         sys.exit(f"Nothing to publish for shop={args.shop!r} date={args.date!r} (no EAN rows, no --category-price)")
 
@@ -258,7 +280,8 @@ def main() -> None:  # pragma: no cover - network / CLI wiring
     # receipt photos are often taken away from the shop.
     osm_type, osm_id = _resolve_location(args.shop, args.osm)
     print(f"Location: OSM {osm_type}/{osm_id} for {args.shop!r}")
-    print(f"{len(rows)} priced line items; proof={args.proof.name}")
+    proof_label = args.proof.name if args.proof else f"id {args.proof_id}"
+    print(f"{len(rows)} priced line items; proof={proof_label}")
 
     headers = {"Authorization": f"Bearer {_token()}"} if args.commit else {}
     if args.commit and not _token():

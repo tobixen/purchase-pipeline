@@ -31,6 +31,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -45,8 +46,6 @@ except ImportError:  # pragma: no cover
 # Fields copied straight through to the OFF write body when present.
 _PASSTHROUGH = (
     "lang",
-    "product_name_bg",
-    "product_name_en",
     "product_name",
     "brands",
     "quantity",
@@ -56,6 +55,8 @@ _PASSTHROUGH = (
     "labels",
     "packaging",
 )
+# ...plus the product name in any language: product_name_bg, product_name_no, …
+_LOCALISED_NAME = re.compile(r"product_name_[a-z]{2}")
 
 
 def build_body(product: dict[str, Any]) -> dict[str, Any]:
@@ -68,7 +69,11 @@ def build_body(product: dict[str, Any]) -> dict[str, Any]:
     if not code:
         raise ValueError("product needs a 'code' (EAN)")
     body: dict[str, Any] = {"code": code}
-    for field in _PASSTHROUGH:
+    if product.get("lang") is False:
+        # YAML 1.1 reads a bare ``lang: no`` (Norwegian) as a boolean.
+        product = {**product, "lang": "no"}
+    fields = [*_PASSTHROUGH, *(k for k in product if _LOCALISED_NAME.fullmatch(str(k)))]
+    for field in fields:
         value = product.get(field)
         if value is not None and str(value).strip() != "":
             body[field] = str(value).strip()
@@ -139,9 +144,8 @@ def main() -> None:  # pragma: no cover - thin CLI / network wiring
     for p in products:
         body = build_body(p)
         images = _images(p)
-        print(
-            f"\n{'WRITE' if args.commit else 'DRY-RUN'} {body['code']}  {body.get('product_name_en') or body.get('product_name_bg', '')}"
-        )
+        name = body.get("product_name_en") or body.get(f"product_name_{body.get('lang', '')}", "")
+        print(f"\n{'WRITE' if args.commit else 'DRY-RUN'} {body['code']}  {name}")
         for k, v in body.items():
             if k != "code":
                 print(f"    {k}: {v}")

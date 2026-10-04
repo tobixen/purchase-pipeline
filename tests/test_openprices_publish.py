@@ -8,6 +8,7 @@ from purchase_pipeline.openprices_publish import (
     _parse_discount,
     build_category_price,
     build_price,
+    product_rows,
     receipt_currency,
 )
 
@@ -140,3 +141,24 @@ def test_build_price_strips_tingbok_shop_prefix():
     row = {"ean": "lidl-20358037", "unit_price": 1.29, "date": "2026-10-01"}
     payload = build_price(row, proof_id=1, osm_type="NODE", osm_id=2)
     assert payload["product_code"] == "20358037"
+
+
+class TestProductRows:
+    """Which ledger rows become PRODUCT prices — the whole receipt, or a retry subset."""
+
+    LEDGER = [
+        {"shop": "Lidl Varna", "date": "2026-10-04", "ean": "lidl-20358037"},
+        {"shop": "Lidl Varna", "date": "2026-10-04", "ean": "4056489080510"},
+        {"shop": "Lidl Varna", "date": "2026-10-04", "ean": None},
+        {"shop": "Lidl Varna", "date": "2026-10-03", "ean": "4056489080510"},
+    ]
+
+    def test_all_ean_rows_of_the_receipt(self):
+        rows = product_rows(self.LEDGER, "Lidl Varna", "2026-10-04")
+        assert [r["ean"] for r in rows] == ["lidl-20358037", "4056489080510"]
+
+    def test_only_retries_a_failed_line_by_bare_or_prefixed_code(self):
+        """A 400 on one line must be retryable without duplicating the lines that went through."""
+        for code in ("20358037", "lidl-20358037"):
+            rows = product_rows(self.LEDGER, "Lidl Varna", "2026-10-04", only=[code])
+            assert [r["ean"] for r in rows] == ["lidl-20358037"]

@@ -22,8 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`--from` no longer revives a `skipped` stage.** It re-runs `done` stages — that is what a restart is for — but `skipped` is the reviewer's decision that a stage must never run for that file. The difference only became load-bearing with several files per invocation, where `--from ledger` would otherwise have pushed a hardware trip marked `tingbok_push: skipped` to tingbok as a side effect of re-running the ledger stage on the other two.
 - **`receipt-formats`** records per-chain receipt layout quirks — which address line names the branch, whether an `N x unit_price` multiplier belongs to the line above or below it, how discounts and deposits print — and prints them as a checklist before transcription.
 - **Shop-local article numbers are pushed to tingbok under a shop-prefixed key** — in-store / GS1 restricted-distribution codes (Lidl's 8-digit `2x` PLUs, Mercadona's `0x` EAN-8, 7-digit shop article numbers) are not globally unique, so `tingbok-push` now derives a `<chain>-<code>` key from the staging `shop` (`20004132` @ "Lidl Varna" → `lidl-20004132`). New `canonical_ean()`/`chain_slug()`/`is_local_instore_code()` helpers; genuine global EANs, 13-digit `2x` weight barcodes, hand-written prefixed keys and shopless ad-hoc pushes are left bare. Matches tingbok's server-side forwarding, so a shopping import no longer creates a bare duplicate of an already-prefixed record.
+- **`openprices-publish --only EAN`** re-sends just the named PRODUCT lines (repeatable, bare or shop-prefixed code), so one line that failed can be retried against the already-uploaded proof (`--proof-id`, which now makes `--proof` optional) without duplicating the lines that went through.
 
 ### Fixed
+
+- **`off-upload` handles Norwegian (and any other language's) product names** — only `product_name_bg`/`_en` were passed to OFF and any other `product_name_<lang>` was silently dropped, and a bare `lang: no` reached OFF as the string `False` because YAML 1.1 reads it as a boolean. Every `product_name_<lang>` now passes through, and a boolean-false `lang` is taken as `no`.
 
 These were fixed while the code still lived in `inventory-md/scripts/`, before
 the migration. They are recorded here rather than there because this is where

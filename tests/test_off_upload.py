@@ -1,6 +1,7 @@
 """Tests for off_upload.build_body (pure OFF write-body construction)."""
 
 import pytest
+import yaml
 
 from purchase_pipeline.off_upload import _images, build_body
 
@@ -62,3 +63,20 @@ def test_images_empty_when_none():
 
 def test_code_shop_prefix_stripped():
     assert build_body({"code": "lidl-20358037"})["code"] == "20358037"
+
+
+def test_product_name_in_any_language_passed_through():
+    """Norwegian products carry product_name_no; it must not be silently dropped."""
+    body = build_body({"code": "7090018140228", "product_name_no": "Hvalbiff", "product_name_nb": "Hvalbiff"})
+    assert body["product_name_no"] == "Hvalbiff"
+    assert body["product_name_nb"] == "Hvalbiff"
+
+
+def test_unknown_fields_still_dropped():
+    assert "front_image" not in build_body({"code": "1", "front_image": "x.jpg", "product_name_xx_yy": "z"})
+
+
+def test_lang_no_parsed_by_yaml_as_false_is_norwegian():
+    """YAML 1.1 reads a bare ``lang: no`` as False — the Norway problem."""
+    body = build_body(yaml.safe_load("code: '7090018140228'\nlang: no\nproduct_name_no: Hvalbiff"))
+    assert body["lang"] == "no"
