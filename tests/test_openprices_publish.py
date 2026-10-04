@@ -133,3 +133,10 @@ class TestReceiptCurrency:
         rows = [*self.ROWS, {"shop": "Holdbart Oslo", "date": "2026-08-29", "currency": "EUR"}]
         with pytest.raises(ValueError, match="several currencies"):
             receipt_currency(rows, "Holdbart Oslo", "2026-08-29")
+
+
+def test_build_price_strips_tingbok_shop_prefix():
+    """The ledger carries tingbok's lidl-<code> key; Open Prices wants the bare code."""
+    row = {"ean": "lidl-20358037", "unit_price": 1.29, "date": "2026-10-01"}
+    payload = build_price(row, proof_id=1, osm_type="NODE", osm_id=2)
+    assert payload["product_code"] == "20358037"

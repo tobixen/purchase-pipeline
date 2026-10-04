@@ -58,3 +58,7 @@ def test_images_legacy_front_image_maps_to_front():
 
 def test_images_empty_when_none():
     assert _images({"code": "1"}) == {}
+
+
+def test_code_shop_prefix_stripped():
+    assert build_body({"code": "lidl-20358037"})["code"] == "20358037"

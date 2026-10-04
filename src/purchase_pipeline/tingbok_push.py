@@ -117,6 +117,21 @@ def canonical_ean(ean: str, shop: str) -> str:
     return ean
 
 
+# A chain_slug() prefix (one token with at least one letter) and a code;
+# a hyphenated number such as an ISBN has no letter before its first hyphen.
+_PREFIXED_CODE = re.compile(r"[a-z0-9]*[a-z][a-z0-9]*-(\d+)")
+
+
+def off_code(ean: str) -> str:
+    """Return the code Open Food Facts / Open Prices know *ean* by.
+
+    The inverse of :func:`canonical_ean`: OFF has no chain prefix, so
+    ``"lidl-20358037"`` → ``"20358037"``. Bare codes are returned unchanged.
+    """
+    m = _PREFIXED_CODE.fullmatch(ean)
+    return m.group(1) if m else ean
+
+
 def _get(base: str, ean: str) -> dict[str, Any]:
     try:
         r = requests.get(f"{base}/api/ean/{ean}", timeout=15)

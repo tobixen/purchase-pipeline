@@ -35,6 +35,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from purchase_pipeline.tingbok_push import off_code
+
 try:
     import yaml
 except ImportError:  # pragma: no cover
@@ -62,7 +64,7 @@ def build_body(product: dict[str, Any]) -> dict[str, Any]:
     ``code`` is required. Only known, non-empty fields are included so we never
     blank an existing field on update.
     """
-    code = str(product.get("code") or "").strip()
+    code = off_code(str(product.get("code") or "").strip())
     if not code:
         raise ValueError("product needs a 'code' (EAN)")
     body: dict[str, Any] = {"code": code}

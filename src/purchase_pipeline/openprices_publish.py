@@ -36,6 +36,7 @@ from typing import Any
 import niquests as requests
 
 from purchase_pipeline.shop_osm import load_cache, match_shop_osm, parse_osm_spec, save_entry, shop_osm_candidates
+from purchase_pipeline.tingbok_push import off_code
 
 BASES = {"org": "https://prices.openfoodfacts.org", "net": "https://prices.openfoodfacts.net"}
 TOKEN_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "inventory-md" / "openprices-token"
@@ -69,7 +70,7 @@ def build_price(row: dict[str, Any], *, proof_id: int, osm_type: str, osm_id: in
     payload = {
         "proof_id": proof_id,
         "type": "PRODUCT",
-        "product_code": str(row["ean"]),
+        "product_code": off_code(str(row["ean"])),
         "price": row["unit_price"],
         "currency": row.get("currency", "EUR"),
         "date": row["date"],
@@ -236,7 +237,7 @@ def main() -> None:  # pragma: no cover - network / CLI wiring
     if missing:
         parser.error(f"{', '.join(missing)} required for publishing")
 
-    discounts = {ean: (gross, dtype) for ean, gross, dtype in (_parse_discount(s) for s in args.discount)}
+    discounts = {off_code(ean): (gross, dtype) for ean, gross, dtype in (_parse_discount(s) for s in args.discount)}
     category_specs = [_parse_category_price(s) for s in args.category_price]
 
     base = BASES[args.env]
@@ -290,8 +291,8 @@ def main() -> None:  # pragma: no cover - network / CLI wiring
         print(f"proof uploaded -> id={proof_id}")
 
     for r in rows:
-        if r["ean"] in discounts:
-            gross, dtype = discounts[r["ean"]]
+        if off_code(r["ean"]) in discounts:
+            gross, dtype = discounts[off_code(r["ean"])]
             r = {**r, "price_without_discount": gross, "discount_type": dtype}
         payload = build_price(r, proof_id=proof_id or 0, osm_type=osm_type, osm_id=osm_id)
         disc = (

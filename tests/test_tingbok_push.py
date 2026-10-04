@@ -106,3 +106,19 @@ def test_shopping_item_keeps_receipt_and_price() -> None:
     assert payload["prices"] == [
         {"date": "2026-06-13", "shop": "Lidl", "price": 2.52, "currency": "EUR", "unit": "pcs"}
     ]
+
+
+def test_off_code_strips_shop_prefix() -> None:
+    """OFF / Open Prices know local codes bare; tingbok's chain prefix must go."""
+    assert tingbok_push.off_code("lidl-20358037") == "20358037"
+    assert tingbok_push.off_code("mercadona-00501163") == "00501163"
+
+
+def test_off_code_leaves_bare_codes_alone() -> None:
+    assert tingbok_push.off_code("3800214924577") == "3800214924577"
+    assert tingbok_push.off_code("20358037") == "20358037"
+
+
+def test_off_code_leaves_hyphenated_numbers_alone() -> None:
+    """Only a chain-slug prefix is stripped, never part of a hyphenated number."""
+    assert tingbok_push.off_code("978-3-16-148410-0") == "978-3-16-148410-0"
