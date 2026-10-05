@@ -138,6 +138,13 @@ Found 2026-09-24. The shape that works is `{date, shop, currency, total,
 items[{name, price, quantity, unit?, unit_price?}]}`, and today the only way to
 learn it is to read the code or an earlier session's JSON.
 
+## `openprices-publish --only` silently ignores codes that match nothing
+
+Found 2026-10-05 in code review. A mistyped `--only` code publishes just the
+lines that did match; when none match, the run says "Nothing to publish (no EAN
+rows …)", which points at the ledger rather than the typo. Report every `--only`
+code that matched no row and exit non-zero.
+
 ## A malformed staging file crashes the whole batch with a raw traceback
 
 Found 2026-09-24. A colon inside an unquoted `name:` value made PyYAML raise, and
