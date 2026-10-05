@@ -75,6 +75,10 @@ Issues = "https://github.com/tobixen/purchase-pipeline/issues"
 
 [tool.hatch.version]
 source = "vcs"
+# Only v<digit>* tags are releases. The default describe matches any tag
+# containing a digit, so a date-stamped local tag on HEAD (a pre-rewrite
+# backup, say) became the version and broke every build.
+raw-options = { scm = { git = { describe_command = "git describe --dirty --tags --long --abbrev=40 --match v[0-9]*" } } }
 
 [tool.hatch.build.hooks.vcs]
 version-file = "src/purchase_pipeline/_version.py"
