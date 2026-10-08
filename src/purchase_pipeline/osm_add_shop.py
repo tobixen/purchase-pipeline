@@ -174,7 +174,9 @@ def _api(token: str, *, api_base: str) -> Any:  # pragma: no cover - network
     import niquests as requests
     import osmapi
 
-    session = requests.Session()
+    # HTTP/3 off: niquests upgrades once the API advertises Alt-Svc, and its
+    # QUIC connect crashed mid-upload (2026-10-08), after the changeset opened.
+    session = requests.Session(disable_http3=True)
     session.headers["Authorization"] = f"Bearer {token}"
     return osmapi.OsmApi(api=api_base, session=session, created_by=CREATED_BY)
 

@@ -242,6 +242,19 @@ class TestUploadNode:
         assert api.calls[-1] == ("changeset_close",)
 
 
+class TestApiSession:
+    def test_http3_is_disabled(self, monkeypatch):
+        """niquests upgrades to HTTP/3 once the OSM API advertises Alt-Svc, and
+        its QUIC connect then crashed (``illegal IP address string passed to
+        inet_pton``) on 2026-10-08 — after the changeset was opened, before the
+        node was created, so every retry would litter another empty changeset."""
+        osmapi = pytest.importorskip("osmapi")
+        seen = {}
+        monkeypatch.setattr(osmapi, "OsmApi", lambda **kw: seen.update(kw))
+        osm_add_shop._api("token", api_base="https://api.openstreetmap.org")
+        assert seen["session"]._disable_http3 is True
+
+
 class TestMain:
     BASE = ["--lat", str(LAT), "--lon", str(LON), "--name", "Sozopol Fish", "--shop", "seafood"]
 
