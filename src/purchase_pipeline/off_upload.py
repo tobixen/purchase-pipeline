@@ -2,8 +2,12 @@
 """Create/update Open Food Facts products for EANs missing from OFF.
 
 Reads a curated YAML of products (the reviewable artifact), builds OFF write
-bodies, and — only with --commit — writes them to OFF and uploads the front
-image, then verifies. Defaults to a dry run.
+bodies, and — only with --commit — writes them to OFF and uploads the
+product's images (front, ingredients, nutrition, packaging), then verifies.
+Defaults to a dry run. It also tops up the images of a product that already
+exists: give ``code``, ``images`` and the product's main ``lang`` — the
+images are filed under ``lang``, and without it under ``en``, which does not
+replace the front image of a product whose main language is another.
 
 Auth: uses the logged-in OFF session cookie read from the browser via
 browser_cookie3 (no password in the script). Pass --env net to target staging
@@ -21,7 +25,12 @@ Products YAML (one entry per EAN)::
         categories: Chickpeas, Legumes
         stores: Billa
         countries: Bulgaria
-        front_image: /path/to/front.jpg     # optional
+        images:                             # optional, any subset
+          front: /path/to/front.jpg
+          ingredients: /path/to/ingredients.jpg
+          nutrition: /path/to/nutrition.jpg
+          packaging: /path/to/packaging.jpg
+        # (legacy: ``front_image: /path`` still works for the front image)
 
 Usage:
     off_upload.py --products staging/off-products-2026-06-06.yaml            # dry run
@@ -118,7 +127,7 @@ def main() -> None:  # pragma: no cover - thin CLI / network wiring
     parser.add_argument("--products", type=Path, required=True, help="Curated products YAML")
     parser.add_argument("--env", choices=["org", "net"], default="org", help="org=production, net=staging")
     parser.add_argument("--commit", action="store_true", help="Actually write to OFF (default: dry run)")
-    parser.add_argument("--no-image", action="store_true", help="Skip front-image upload")
+    parser.add_argument("--no-image", action="store_true", help="Skip all image uploads")
     args = parser.parse_args()
 
     if yaml is None:
