@@ -308,8 +308,10 @@ driver runs*; run them individually only to debug.
    The one thing worth repeating here, because it bites during a shopping run:
    `staging-to-inventory` does **not** write `--tag`, but `inventory-md add`
    does — needing a tag is **not** a licence to hand-edit `inventory.md`. With
-   `add`, `move` and `edit` there is no remaining reason to touch the markdown
-   by hand.
+   `add`, `move`, `edit` and `remove` there is no remaining reason to touch the
+   markdown by hand. `remove` is for an item found to be used up or thrown out
+   during the run; an item missing from the inventory counts as consumed (see
+   `purchase-ledger consumed` below).
 4. **Photos** (manual) — copy only **label** photos to `photos/LOCATION-ID/`; skip
    barcode/expiry close-ups; skip fast-consumed items. Never `git add` photos.
 5. **tingbok** — push price + receipt-name observations for reviewed EANs (a
