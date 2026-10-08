@@ -111,6 +111,21 @@ counter and own-brand snacks. The two writers should share whatever
 somewhere: `tingbok-push` derives `lidl-` from the staging `shop:` field, so the
 same derivation needs the normalised branch key (see the next item).
 
+## Bug: `shop-import` does not match a bare in-store scan to its `lidl-` candidate
+
+Found 2026-10-08 (Lidl 2026-10-07). The photo scan of the rice reads `20358037`,
+and the receipt line's own candidate list (from tingbok) carries `lidl-20358037`
+at score 1.0. The importer compares them as strings, so it reported "no receipt
+line lists EAN 20358037 as a candidate" and left the photo loose. Yogurt and
+pork scans went the same way. Normalise both sides with the same shop-prefix
+logic before comparing (same family as the item above).
+
+## Not this project: `inventory-md edit --tag ""` leaves a bare `tag:`
+
+Found 2026-10-08. Clearing an item's only tag with `--tag ""` wrote
+`… ID:x tag: EAN:…` instead of dropping the field; it was fixed by hand. The
+other fields treat an empty value as "remove". Belongs in inventory-md.
+
 ## `shop-import` writes a chain name that can never resolve
 
 Found 2026-08-05. `shop-import` sets `shop: Lidl Varna` from the receipt, but
