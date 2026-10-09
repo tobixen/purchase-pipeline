@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **`off-upload` handles Norwegian (and any other language's) product names** — only `product_name_bg`/`_en` were passed to OFF and any other `product_name_<lang>` was silently dropped, and a bare `lang: no` reached OFF as the string `False` because YAML 1.1 reads it as a boolean. Every `product_name_<lang>` now passes through, and a boolean-false `lang` is taken as `no`.
+- **A `bb_source` note no longer turns a best-before into an estimate** — a note that merely mentioned the word "estimate" wrote a printed date as `bb:…:EST`. Only a `:EST` suffix or `bb_est: true` marks an estimate now; a staging file that relied on `bb_source: estimate` must set `bb_est: true`.
 
 These were fixed while the code still lived in `inventory-md/scripts/`, before
 the migration. They are recorded here rather than there because this is where

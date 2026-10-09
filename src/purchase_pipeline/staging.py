@@ -58,9 +58,9 @@ Per-item identification and its provenance:
 * ``ean_source`` / ``bb_source`` — free text saying what filled the field:
   ``photo:IMG_1.jpg`` (a scan corroborated by the line's own candidate list),
   ``tingbok_receipt_name:1.0`` (an exact prior observation of this till string),
-  or whatever a reviewer writes. ``bb_source`` additionally drives an estimate
-  heuristic in ``inventory_import`` — a source mentioning ``est``/``shelf``/
-  ``inferred`` marks the date as an estimate.
+  or whatever a reviewer writes. It is provenance only: an estimated date is
+  marked by ``bb: 2026-09:EST`` or ``bb_est: true``, never by the wording of
+  ``bb_source``.
 * ``ean_candidates`` — what tingbok's reverse receipt-name lookup returned, each
   with a ``score``. 1.0 means this exact till string was pushed for that EAN
   before; below 1.0 is a fuzzy suggestion and can be plausibly wrong.

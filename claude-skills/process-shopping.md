@@ -283,7 +283,8 @@ driver runs*; run them individually only to debug.
    ```
    It reads each item's `location` (→ container), `category`, `inventory_id`,
    `ean`, `bb` (an estimate marked either as a `:EST` suffix or as a separate
-   `bb_est: true` — both honoured, contradicting each other is an error),
+   `bb_est: true` — both honoured, contradicting each other is an error; a
+   `bb_source` of "estimate" marks **nothing**, it is provenance text only),
    `qty`/`unit` (weighed lines → `mass`/`volume`)
    and `price`, formats the line, inserts it in the right section, and runs the
    QA checks as part of the write: duplicate `ID:`, food-without-`bb:` (hard

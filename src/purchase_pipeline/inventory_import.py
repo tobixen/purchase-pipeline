@@ -29,7 +29,6 @@ rather than failing on a duplicate ID.
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -70,16 +69,10 @@ def staging_item_to_kwargs(
     # the separate ``bb_est: true`` key.  Both are honoured and must agree —
     # ``resolve_bb_est`` raises on a contradiction rather than silently picking
     # one, since dropping the estimate marker records a guess as a hard fact.
-    explicit_est = item.get("bb_est")
-    bb, bb_est = additem.resolve_bb_est(item.get("bb"), explicit_est)
-
-    # ``bb_source`` is free text, so it is only a heuristic: it can promote an
-    # unflagged date to an estimate, but never overrides an explicit ``bb_est``.
-    if explicit_est is None and not bb_est:
-        source = (item.get("bb_source") or "").lower()
-        # Whole words: "est" inside "best-before" or "latest" is not the marker.
-        if re.search(r"\b(est|estimat\w*|shelf|inferred)\b", source):
-            bb_est = True
+    # ``bb_source`` is provenance text and deliberately plays no part here: a
+    # note like "printed on the lid; earlier than the rust estimate" describes a
+    # hard date, and guessing from its words turned it into an estimate.
+    bb, bb_est = additem.resolve_bb_est(item.get("bb"), item.get("bb_est"))
 
     # quantity routing by unit
     unit = (item.get("unit") or "pcs").lower()

@@ -115,23 +115,25 @@ def test_kwargs_bb_est_suffix_split():
     assert kw["bb_est"] is True
 
 
-def test_kwargs_bb_source_marks_estimate():
-    item = {"category": "potatoes", "bb": "2026-09", "bb_source": "shelf-life estimate", "location": "floating"}
+@pytest.mark.parametrize(
+    "source",
+    [
+        "estimate",
+        "shelf-life estimate",
+        "EST from shelf life",
+        "inferred",
+        # 2026-10-08 Kaufland: a PRINTED date whose provenance note merely
+        # compared it with an estimate came out as bb:2028-09-07:EST.
+        "photo:IMG_x.jpg (lid; earlier than the 2-year rust estimate)",
+        "best-before printed on the lid",
+    ],
+)
+def test_kwargs_bb_source_never_marks_estimate(source):
+    # bb_source is provenance text; only ``:EST`` or ``bb_est: true`` mark a guess.
+    item = {"category": "potatoes", "bb": "2028-09-07", "bb_source": source, "location": "floating"}
     kw = staging_item_to_kwargs(item, "EUR")
-    assert kw["bb_est"] is True
-
-
-@pytest.mark.parametrize("source", ["best-before printed on the lid", "latest photo", "photo:IMG_20260731_114413.jpg"])
-def test_kwargs_bb_source_mentioning_best_before_is_not_an_estimate(source):
-    # "est" inside a word ("best-before") is not the estimate marker.
-    item = {"category": "potatoes", "bb": "2026-09", "bb_source": source, "location": "floating"}
-    assert staging_item_to_kwargs(item, "EUR")["bb_est"] is False
-
-
-@pytest.mark.parametrize("source", ["est", "estimated by the user", "EST from shelf life"])
-def test_kwargs_bb_source_estimate_words_mark_estimate(source):
-    item = {"category": "potatoes", "bb": "2026-09", "bb_source": source, "location": "floating"}
-    assert staging_item_to_kwargs(item, "EUR")["bb_est"] is True
+    assert kw["bb"] == "2028-09-07"
+    assert kw["bb_est"] is False
 
 
 def test_kwargs_bb_est_key_marks_estimate():
@@ -155,19 +157,6 @@ def test_kwargs_bb_est_false_conflicting_with_suffix_raises():
     item = {"category": "rice", "bb": "2027-01-01:EST", "bb_est": False, "location": "floating"}
     with pytest.raises(ValueError, match="EST"):
         staging_item_to_kwargs(item, "EUR")
-
-
-def test_kwargs_explicit_bb_est_false_beats_bb_source_guess():
-    # bb_source is a free-text heuristic; an explicit flag is authoritative.
-    item = {
-        "category": "potatoes",
-        "bb": "2026-09",
-        "bb_est": False,
-        "bb_source": "shelf-life estimate",
-        "location": "floating",
-    }
-    kw = staging_item_to_kwargs(item, "EUR")
-    assert kw["bb_est"] is False
 
 
 def test_kwargs_non_boolean_bb_est_raises():
