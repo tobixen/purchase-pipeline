@@ -32,6 +32,18 @@
     "source": "Coop Extra Furuset, 2026-09-25 (read from a photo, IMG_20260925_084043.jpg)"
   },
 
+  "Kaufland": {
+    "branch_address": "header",
+    "branch_address_note": "The FIRST header lines are the legal entity (Кауфланд България ЕООД енд Ко. КД, гр. София, ул. Скопие 1А) — not the store. The branch is the `Хипермаркет Кауфланд <city>-<district>` line plus the street line below it (2026-10-08: `Хипермаркет Кауфланд Варна-Трошево`, ул. Христо Смирненски 2). Take the branch key from those two lines, but start it with `Kaufland`, not `Хипермаркет` (`Kaufland Varna ул. Христо Смирненски 2`): the chain is read from the key's first word.",
+    "multiplier_line": "precedes",
+    "multiplier_line_note": "The `N x unit_price` line is printed ABOVE the item it belongs to: on 2026-10-08 `0.510 x 2.39` (= 1.22) belongs to `Домати розови (кг)` below it, and `12.000 x 1.12` (= 13.44) to `К.Пасирани домати`. Quantities are always printed with three decimals, so a piece count looks like a weight.",
+    "discounts": "`#XTRA отстъпка` then `ОТСТЪПКИ 0.64-Б` printed directly BELOW the discounted item; the item's own line is the gross price",
+    "discounts_note": "XTRA is Kaufland's loyalty card — Open Prices discount type LOYALTY_PROGRAM. The item lines sum to more than the total by exactly the ОТСТЪПКИ amounts. Every price, discounts included, ends in a VAT-group letter (`Б`) that is not part of the number.",
+    "dual_currency": "EUR only — `ОБЩА СУМА ЕВРО` is the total line; no BGN total on the 2026-10-08 receipt",
+    "weighed_items": "item name ends in `(кг)`; the multiplier line above it carries the kg quantity with three decimals and the per-kg price",
+    "source": "IMG_20261008_161425.jpg (Kaufland Varna-Troshevo 2026-10-08)"
+  },
+
   "Lidl": {
     "multiplier_line": "unknown",
     "multiplier_line_note": "Never transcribed from a photo — Lidl trips are imported from the lidl_receipts.json export, which carries one object per line item with explicit quantity, so there is no multiplier line to misread. The printed receipt's layout is genuinely unrecorded; read it before adding one here.",

@@ -116,6 +116,17 @@ class TestShippedRegistry:
         assert billa["multiplier_line"] == "precedes"
         assert billa["branch_address"] == "footer"
 
+    def test_kaufland_records_the_2026_10_08_findings(self):
+        kaufland = load_formats(DEFAULT_REGISTRY)["Kaufland"]
+        # 0.510 x 2.39 = 1.22 sits above "Домати розови (кг)", which it belongs to.
+        assert kaufland["multiplier_line"] == "precedes"
+        assert kaufland["branch_address"] == "header"
+        assert "IMG_20261008_161425.jpg" in kaufland["source"]
+
+    def test_a_cyrillic_shop_name_finds_its_chain(self):
+        # Shop names are written in either script ("Кауфланд Варна-Одесос").
+        assert format_for(load_formats(DEFAULT_REGISTRY), "Кауфланд Варна-Трошево") is not None
+
     def test_every_entry_declares_its_multiplier_position(self):
         # An entry that omits this is worse than no entry: a transcriber would
         # read the registry, find the chain listed, and assume the default.

@@ -31,6 +31,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from purchase_pipeline.shop_names import fold_shop
+
 DEFAULT_REGISTRY = Path(__file__).resolve().parent / "data" / "receipt-formats.json"
 
 #: Human-readable prompt per registry field, used to render the checklist.
@@ -62,14 +64,17 @@ def load_formats(path: Path = DEFAULT_REGISTRY) -> dict[str, Any]:
 
 
 def chain_candidates(formats: dict[str, Any], shop: str) -> list[str]:
-    """Registry chains that *shop* belongs to (chain is a prefix of the shop)."""
+    """Registry chains that *shop* belongs to (chain is a prefix of the shop).
+
+    Case and Cyrillic/Latin script are ignored: "Кауфланд Варна" is a Kaufland.
+    """
     if not shop:
         return []
-    want = shop.strip().casefold()
+    want = fold_shop(shop.strip())
     return [
         chain
         for chain in formats
-        if want == chain.strip().casefold() or want.startswith(chain.strip().casefold() + " ")
+        if want == fold_shop(chain.strip()) or want.startswith(fold_shop(chain.strip()) + " ")
     ]
 
 
