@@ -206,3 +206,44 @@ class TestReadDiaryText:
 
         with pytest.raises(OSError):
             read_diary_text(tmp_path)
+
+
+class TestCyrillicShopNames:
+    """2026-10-08: ``shopping-context "Kaufland"`` found neither the 06-22
+    staging file nor any ledger row, both named ``Кауфланд Варна-Одесос …``.
+    A Latin query must match the Cyrillic spelling of the same chain."""
+
+    def test_staging_file_with_cyrillic_shop(self, tmp_path):
+        d = tmp_path / "staging"
+        d.mkdir()
+        (d / "shopping-2026-06-22-kaufland.yaml").write_text(
+            "shop: Кауфланд Варна-Одесос ул. Девня 24\n", encoding="utf-8"
+        )
+        (d / "shopping-2026-10-08-kaufland.yaml").write_text(
+            "shop: Kaufland Varna ул. Христо Смирненски 2\n", encoding="utf-8"
+        )
+        (d / "shopping-2026-10-07-lidl.yaml").write_text("shop: Lidl Varna\n", encoding="utf-8")
+        names = [f.name for f in find_staging_files(d, "kaufland", 5)]
+        assert names == ["shopping-2026-10-08-kaufland.yaml", "shopping-2026-06-22-kaufland.yaml"]
+
+    def test_ledger_rows_with_cyrillic_shop(self):
+        text = '{"date": "2026-06-22", "shop": "Кауфланд Варна-Одесос ул. Девня 24", "name": "x"}\n'
+        assert [r["name"] for r in recent_ledger_rows(text, "Kaufland", 5)] == ["x"]
+
+    def test_cyrillic_query_matches_latin(self):
+        text = '{"date": "2026-10-08", "shop": "Kaufland Varna ул. Христо Смирненски 2", "name": "y"}\n'
+        assert [r["name"] for r in recent_ledger_rows(text, "Кауфланд", 5)] == ["y"]
+
+    def test_diary_line_with_cyrillic_shop(self):
+        diary = "* EUR 9.99 - groceries - Кауфланд (bread)\n* EUR 1.00 - groceries - Lidl\n"
+        assert grep_diary_lines(diary, "Kaufland") == ["* EUR 9.99 - groceries - Кауфланд (bread)"]
+
+
+def test_missing_staging_dir_is_reported_not_none_found(tmp_path, capsys):
+    # The default --staging-dir is relative to the cwd; run from elsewhere, a
+    # silent "(none found)" reads as "this shop has no staging files".
+    missing = tmp_path / "nowhere"
+    main(["Kaufland", "--osm-cache", str(tmp_path / "osm.json"), "--staging-dir", str(missing)])
+    out = capsys.readouterr().out.split("## Recent staging files")[1]
+    assert "(none found)" not in out
+    assert "does not exist" in out

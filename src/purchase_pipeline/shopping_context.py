@@ -37,14 +37,44 @@ from purchase_pipeline.shop_osm import match_shop_osm, shop_osm_candidates
 __all__ = [
     "DEFAULT_OSM_CACHE",
     "find_staging_files",
+    "fold_shop",
     "grep_diary_lines",
     "load_osm_cache",
     "match_shop_osm",
     "read_diary_text",
     "recent_ledger_rows",
     "shop_of",
+    "shop_matches",
     "shop_osm_candidates",
 ]
+
+
+# Bulgarian Streamlined System, the one the staging filenames already follow
+# (Пармаксъзов → ``parmaksazov``).  Shop names arrive in either script — the
+# same Kaufland is "Кауфланд Варна-Одесос" on one receipt and "Kaufland Varna"
+# on the next — so both sides of a match are folded to Latin first.
+_BG_TO_LATIN = str.maketrans(
+    {
+        "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ж": "zh",
+        "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n",
+        "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f",
+        "х": "h", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sht", "ъ": "a",
+        "ь": "y", "ю": "yu", "я": "ya",
+    }
+)  # fmt: skip
+
+
+def fold_shop(text: str) -> str:
+    """Casefold *text* and transliterate Bulgarian Cyrillic to Latin."""
+    return text.casefold().translate(_BG_TO_LATIN)
+
+
+def shop_matches(query: str, text: str) -> bool:
+    """Whether *query* occurs in *text*, ignoring case and Cyrillic/Latin script.
+
+    Context lookup only: OSM resolution stays an exact branch-key match.
+    """
+    return fold_shop(query) in fold_shop(text)
 
 
 def shop_of(path: Path) -> str | None:
@@ -60,14 +90,13 @@ def shop_of(path: Path) -> str | None:
 def find_staging_files(staging_dir: Path, shop: str | None, limit: int) -> list[Path]:
     """Recent ``shopping-*.yaml`` files (newest first), optionally filtered by shop.
 
-    Filtering is a case-insensitive substring test against each file's ``shop:``
+    Filtering is a case- and script-insensitive (:func:`shop_matches`) substring test against each file's ``shop:``
     field. Ordering is by filename descending — the files are date-stamped
     (``shopping-YYYY-MM-DD[-shop].yaml``), so lexical order is chronological.
     """
     files = sorted(staging_dir.glob("shopping-*.yaml"), key=lambda p: p.name, reverse=True)
     if shop:
-        want = shop.casefold()
-        files = [f for f in files if (s := shop_of(f)) and want in s.casefold()]
+        files = [f for f in files if (s := shop_of(f)) and shop_matches(shop, s)]
     return files[:limit]
 
 
@@ -87,9 +116,8 @@ def read_diary_text(diary_path: Path) -> str:
 
 
 def grep_diary_lines(diary_text: str, shop: str) -> list[str]:
-    """Return diary lines mentioning *shop* (case-insensitive), stripped."""
-    want = shop.casefold()
-    return [line.strip() for line in diary_text.splitlines() if want in line.casefold()]
+    """Return diary lines mentioning *shop* (see :func:`shop_matches`), stripped."""
+    return [line.strip() for line in diary_text.splitlines() if shop_matches(shop, line)]
 
 
 def recent_ledger_rows(ledger_text: str, shop: str, limit: int) -> list[dict[str, Any]]:
@@ -99,7 +127,6 @@ def recent_ledger_rows(ledger_text: str, shop: str, limit: int) -> list[dict[str
     for ``tail``/``grep`` on ``purchases.jsonl``: prior prices, EANs and the
     naming/category convention for this shop are right here, allowlisted.
     """
-    want = shop.casefold()
     rows: list[dict[str, Any]] = []
     for line in ledger_text.splitlines():
         line = line.strip()
@@ -109,7 +136,7 @@ def recent_ledger_rows(ledger_text: str, shop: str, limit: int) -> list[dict[str
             row = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if want in str(row.get("shop", "")).casefold():
+        if shop_matches(shop, str(row.get("shop", ""))):
             rows.append(row)
     return rows[-limit:]
 
@@ -185,7 +212,9 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"## Recent staging files{f' for {args.shop}' if args.shop else ''}")
     files = find_staging_files(args.staging_dir, args.shop, args.limit)
-    if not files:
+    if not args.staging_dir.is_dir():
+        print(f"  {args.staging_dir} does not exist — pass --staging-dir (it is relative to the cwd)")
+    elif not files:
         print("  (none found)")
     for f in files:
         print(f"\n### {f}")
