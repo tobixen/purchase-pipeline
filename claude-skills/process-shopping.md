@@ -347,10 +347,15 @@ off-upload --products off-products.yaml --commit  # writes to OFF
 **Open Prices** — publish receipt prices (auth once via `op_auth.py`):
 ```bash
 openprices-publish --shop "Shop" --date YYYY-MM-DD \
-    --proof RECEIPT.jpg --osm WAY:NNN [--discount EAN=GROSS:SALE] [--commit]
+    --proof RECEIPT.jpg --osm WAY:NNN [--discount EAN=GROSS[:TYPE]] [--commit]
 # barcodeless items as CATEGORY prices:
     --no-products --category-price "en:baguettes=0.17,was=0.45,type=SALE"
 ```
+`--discount` takes the **regular (pre-discount) price** only; the paid price
+always comes from the ledger. `TYPE` is an Open Prices discount type — `SALE`
+(default), `LOYALTY_PROGRAM` (e.g. Kaufland XTRA, Lidl Plus), `EXPIRES_SOON`,
+`QUANTITY`, `SEASONAL`, `PICK_IT_YOURSELF`, `SECOND_HAND`, `OTHER` — and
+anything else, such as a second price (`EAN=2.55:1.91`), is rejected.
 Shop location is a **confirmed** OSM object (cached per branch), never
 auto-geocoded — receipt photos are often taken away from the shop.
 

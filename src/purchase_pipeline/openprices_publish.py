@@ -87,11 +87,32 @@ def build_price(row: dict[str, Any], *, proof_id: int, osm_type: str, osm_id: in
     return payload
 
 
+# Open Prices' discount_type choices (open_prices/prices/constants.py).
+DISCOUNT_TYPES = frozenset(
+    {"QUANTITY", "SALE", "SEASONAL", "LOYALTY_PROGRAM", "EXPIRES_SOON", "PICK_IT_YOURSELF", "SECOND_HAND", "OTHER"}
+)
+
+
+def _discount_type(value: str) -> str:
+    """Validate a discount TYPE; an empty one defaults to SALE.
+
+    A typo here is otherwise posted as-is: ``EAN=2.55:1.91`` (meant as
+    GROSS:PAID) once came through with "1.91" as the discount type.
+    """
+    dtype = value.strip().upper() or "SALE"
+    if dtype not in DISCOUNT_TYPES:
+        raise ValueError(
+            f"unknown discount type {value.strip()!r}; expected one of {', '.join(sorted(DISCOUNT_TYPES))}"
+            " (the paid price comes from the ledger, never from the command line)"
+        )
+    return dtype
+
+
 def _parse_discount(spec: str) -> tuple[str, float, str]:
     """Parse 'EAN=GROSS[:TYPE]', e.g. '3800050405919=1.15:SALE'."""
     ean, _, rest = spec.partition("=")
     gross, _, dtype = rest.partition(":")
-    return ean.strip(), float(gross), (dtype.strip().upper() or "SALE")
+    return ean.strip(), float(gross), _discount_type(dtype)
 
 
 def _parse_category_price(spec: str) -> dict[str, Any]:
@@ -108,7 +129,7 @@ def _parse_category_price(spec: str) -> dict[str, Any]:
         if key == "was":
             out["price_without_discount"] = float(val)
         elif key == "type":
-            out["discount_type"] = val.strip().upper()
+            out["discount_type"] = _discount_type(val)
         elif key == "per":
             out["price_per"] = val.strip().upper()
     return out
@@ -200,7 +221,7 @@ def _token() -> str | None:
     )
 
 
-def main() -> None:  # pragma: no cover - network / CLI wiring
+def main(argv: list[str] | None = None) -> None:  # pragma: no cover - network / CLI wiring
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--shop", default=None, help="Ledger shop name, e.g. 'Billa Varna'")
     parser.add_argument("--date", default=None, help="Ledger date YYYY-MM-DD")
@@ -219,7 +240,11 @@ def main() -> None:  # pragma: no cover - network / CLI wiring
         action="append",
         default=[],
         metavar="EAN=GROSS[:TYPE]",
-        help="Mark an EAN discounted: paid price stays, GROSS is the regular price (repeatable)",
+        help=(
+            "Mark an EAN discounted: the paid price comes from the ledger, GROSS is the regular "
+            "price, TYPE an Open Prices discount type (default SALE; e.g. LOYALTY_PROGRAM, "
+            "EXPIRES_SOON). Repeatable"
+        ),
     )
     parser.add_argument(
         "--category-price",
@@ -240,7 +265,7 @@ def main() -> None:  # pragma: no cover - network / CLI wiring
     )
     parser.add_argument("--env", choices=["org", "net"], default="org")
     parser.add_argument("--commit", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # --coords-from-photo: standalone mode — no shop/date/proof needed.
     # (Unreliable: the photo may be taken away from the shop — confirm before use.)
@@ -263,8 +288,11 @@ def main() -> None:  # pragma: no cover - network / CLI wiring
     if missing:
         parser.error(f"{', '.join(missing)} required for publishing")
 
-    discounts = {off_code(ean): (gross, dtype) for ean, gross, dtype in (_parse_discount(s) for s in args.discount)}
-    category_specs = [_parse_category_price(s) for s in args.category_price]
+    try:
+        discounts = {off_code(e): (gross, dtype) for e, gross, dtype in (_parse_discount(s) for s in args.discount)}
+        category_specs = [_parse_category_price(s) for s in args.category_price]
+    except ValueError as exc:
+        parser.error(str(exc))
 
     base = BASES[args.env]
     ledger = [json.loads(line) for line in args.ledger.read_text(encoding="utf-8").splitlines() if line.strip()]

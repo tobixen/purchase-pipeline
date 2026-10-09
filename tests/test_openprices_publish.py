@@ -162,3 +162,31 @@ class TestProductRows:
         for code in ("20358037", "lidl-20358037"):
             rows = product_rows(self.LEDGER, "Lidl Varna", "2026-10-04", only=[code])
             assert [r["ean"] for r in rows] == ["lidl-20358037"]
+
+
+class TestDiscountTypeValidation:
+    """2026-10-08: ``--discount EAN=2.55:1.91`` (meant as GROSS:SALE-PRICE) was
+    accepted with "1.91" as the discount TYPE and would have been posted."""
+
+    @pytest.mark.parametrize("spec", ["123=2.55:1.91", "123=2.55:BOGUS"])
+    def test_parse_discount_rejects_unknown_type(self, spec):
+        with pytest.raises(ValueError, match="discount type"):
+            _parse_discount(spec)
+
+    def test_parse_discount_type_is_case_insensitive(self):
+        assert _parse_discount("123=2.55:loyalty_program") == ("123", 2.55, "LOYALTY_PROGRAM")
+
+    def test_category_price_rejects_unknown_type(self):
+        with pytest.raises(ValueError, match="discount type"):
+            _parse_category_price("en:baguettes=0.17,was=0.45,type=1.91")
+
+    def test_cli_rejects_numeric_type(self, tmp_path, capsys):
+        from purchase_pipeline.openprices_publish import main
+
+        ledger = tmp_path / "l.jsonl"
+        ledger.write_text("", encoding="utf-8")
+        argv = ["--shop", "X", "--date", "2026-10-08", "--proof-id", "1", "--ledger", str(ledger)]
+        with pytest.raises(SystemExit) as exc:
+            main([*argv, "--discount", "123=2.55:1.91"])
+        assert exc.value.code == 2
+        assert "1.91" in capsys.readouterr().err
