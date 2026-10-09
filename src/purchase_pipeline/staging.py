@@ -62,8 +62,9 @@ Per-item identification and its provenance:
   marked by ``bb: 2026-09:EST`` or ``bb_est: true``, never by the wording of
   ``bb_source``.
 * ``ean_candidates`` — what tingbok's reverse receipt-name lookup returned, each
-  with a ``score``. 1.0 means this exact till string was pushed for that EAN
-  before; below 1.0 is a fuzzy suggestion and can be plausibly wrong.
+  with a ``score`` and the ``shop`` the matching observation was made at. 1.0
+  means this exact till string was pushed for that EAN before; below 1.0 is a
+  fuzzy suggestion and can be plausibly wrong.
 * ``photos`` — the photo files this line's identification rests on.
 
 ``loose_photos`` holds the photos that could **not** be placed on a line, each

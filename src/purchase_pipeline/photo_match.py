@@ -39,6 +39,8 @@ from typing import Any
 
 from inventory_md.bb_dates import find_dates  # date parsing shared with extract_barcodes
 
+from purchase_pipeline.shop_names import same_chain
+
 #: Photo kinds that exist to be looked at by a human; never associated to a line.
 REVIEW_KINDS = ("barcode_conflict", "undecoded")
 
@@ -236,7 +238,7 @@ def associate_photos(items: list[dict[str, Any]], photos: list[dict[str, Any]]) 
     return [p for p in photos if p["file"] not in consumed]
 
 
-def fill_eans_from_candidates(items: list[dict[str, Any]]) -> None:
+def fill_eans_from_candidates(items: list[dict[str, Any]], *, shop: str | None) -> None:
     """Fill ``ean`` on lines that have exactly one exact prior observation.
 
     Score 1.0 from tingbok's reverse receipt-name search is not a similarity
@@ -248,13 +250,23 @@ def fill_eans_from_candidates(items: list[dict[str, Any]]) -> None:
     Two exact candidates (a shop that changed supplier under one till string)
     settle nothing and are noted instead. Anything below 1.0 is left alone: a
     never-seen name still returns somebody else's product at ~0.68.
+
+    A repeat purchase means the same product *at the same chain*: an exact
+    observation made at another chain (or at an unrecorded shop) is a different
+    till's vocabulary — Kaufland's "Смядовска луканка" is not Lidl's — so it
+    only earns a note. *shop* is the staging file's shop; the candidate's is the
+    one tingbok reports for the matching observation.
     """
     for item in items:
         if item.get("ean"):
             continue
-        exact = sorted({str(c["ean"]) for c in item.get("ean_candidates") or [] if c.get("score") == EXACT_SCORE})
-        if len(exact) == 1:
-            item["ean"] = exact[0]
+        exact = [c for c in item.get("ean_candidates") or [] if c.get("score") == EXACT_SCORE]
+        here = sorted({str(c["ean"]) for c in exact if same_chain(shop, c.get("shop"))})
+        if len(here) == 1:
+            item["ean"] = here[0]
             item["ean_source"] = f"tingbok_receipt_name:{EXACT_SCORE}"
-        elif len(exact) > 1:
-            _note(item, f"{len(exact)} candidates scored {EXACT_SCORE} ({', '.join(exact)}) — pick one.")
+        elif len(here) > 1:
+            _note(item, f"{len(here)} candidates scored {EXACT_SCORE} ({', '.join(here)}) — pick one.")
+        elif exact:
+            elsewhere = ", ".join(f"{c['ean']} @ {c.get('shop') or 'unknown shop'}" for c in exact)
+            _note(item, f"exact till-string match only from another shop ({elsewhere}) — verify before using.")

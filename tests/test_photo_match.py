@@ -24,7 +24,10 @@ def _item(receipt_name, candidates=(), **overrides):
         "receipt_name": receipt_name,
         "ean": None,
         "ean_source": None,
-        "ean_candidates": [{"ean": e, "score": s, "source": "tingbok_receipt_name"} for e, s in candidates],
+        "ean_candidates": [
+            {"ean": c[0], "score": c[1], "source": "tingbok_receipt_name", "shop": c[2] if len(c) > 2 else "Lidl Varna"}
+            for c in candidates
+        ],
         "bb": None,
         "bb_source": None,
         "photos": [],
@@ -290,24 +293,52 @@ class TestFillEansFromCandidates:
 
     def test_unique_exact_prior_observation_fills_the_line(self):
         items = [_item("ПРЯСНО МЛЯКО 3,7%", [("4056489080527", 1.0), ("4056489080510", 0.68)])]
-        fill_eans_from_candidates(items)
+        fill_eans_from_candidates(items, shop="Lidl Varna")
         assert items[0]["ean"] == "4056489080527"
         assert items[0]["ean_source"] == "tingbok_receipt_name:1.0"
 
     def test_fuzzy_candidate_never_fills(self):
         items = [_item("НОВ ПРОДУКТ", [("4056489080527", 0.68)])]
-        fill_eans_from_candidates(items)
+        fill_eans_from_candidates(items, shop="Lidl Varna")
         assert items[0]["ean"] is None
 
     def test_two_exact_candidates_are_ambiguous(self):
         """One till string, two EANs seen under it — the shop changed supplier."""
         items = [_item("СИРЕНЕ", [("4056489080527", 1.0), ("4056489693307", 1.0)])]
-        fill_eans_from_candidates(items)
+        fill_eans_from_candidates(items, shop="Lidl Varna")
         assert items[0]["ean"] is None
         assert "1.0" in items[0]["notes"]
+
+    def test_exact_match_from_another_chain_does_not_fill(self):
+        """2026-10-08: the Kaufland till string "Смядовска луканка" was filled
+        with a Lidl product whose Lidl receipt name is the same string. A
+        repeat purchase means same product, same shop — another chain's exact
+        observation is only a candidate."""
+        items = [_item("Смядовска луканка", [("4056489693130", 1.0, "Lidl Varna")])]
+        fill_eans_from_candidates(items, shop="Kaufland Varna ул. Христо Смирненски 2")
+        assert items[0]["ean"] is None
+        assert "Lidl Varna" in items[0]["notes"]
+        assert "4056489693130" in items[0]["notes"]
+
+    def test_same_chain_wins_over_another_chains_exact_match(self):
+        items = [
+            _item(
+                "Смядовска луканка",
+                [("4056489693130", 1.0, "Lidl Varna"), ("3800202645095", 1.0, "Кауфланд Варна-Одесос ул. Девня 24")],
+            )
+        ]
+        fill_eans_from_candidates(items, shop="Kaufland Varna ул. Христо Смирненски 2")
+        assert items[0]["ean"] == "3800202645095"
+        assert items[0]["ean_source"] == "tingbok_receipt_name:1.0"
+
+    def test_exact_match_with_unknown_shop_does_not_fill(self):
+        items = [_item("МЛЯКО", [("4056489080510", 1.0, None)])]
+        fill_eans_from_candidates(items, shop="Lidl Varna")
+        assert items[0]["ean"] is None
+        assert "4056489080510" in items[0]["notes"]
 
     def test_photo_evidence_wins(self):
         items = [_item("МЛЯКО", [("4056489080510", 1.0)])]
         associate_photos(items, build_loose_photos([_barcode("IMG_1.jpg", "4056489080510")]))
-        fill_eans_from_candidates(items)
+        fill_eans_from_candidates(items, shop="Lidl Varna")
         assert items[0]["ean_source"] == "photo:IMG_1.jpg"

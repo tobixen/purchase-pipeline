@@ -119,7 +119,8 @@ Association needs two independent sources to agree: a photo's EAN fills a line
 only when that line already listed it among its `ean_candidates` — tingbok's
 reverse receipt-name lookup saying "this till string has been that EAN before".
 A repeat purchase with no photo at all is filled from a candidate scoring 1.0,
-which is not a similarity score but an exact prior observation. Everything else
+which is not a similarity score but an exact prior observation — and only one
+made at the same chain, since chains share generic till strings. Everything else
 stays visibly unresolved: the line keeps `ean: null`, and the photo stays in
 `loose_photos` with a `review` string saying what stopped it — no line lists this
 EAN (a new purchase), or several do. Guessing between them is the reviewer's job

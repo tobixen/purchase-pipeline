@@ -30,6 +30,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from purchase_pipeline.shop_names import fold_shop, shop_matches
 from purchase_pipeline.shop_osm import SHOP_OSM_PATH as DEFAULT_OSM_CACHE
 from purchase_pipeline.shop_osm import load_cache as load_osm_cache
 from purchase_pipeline.shop_osm import match_shop_osm, shop_osm_candidates
@@ -47,34 +48,6 @@ __all__ = [
     "shop_matches",
     "shop_osm_candidates",
 ]
-
-
-# Bulgarian Streamlined System, the one the staging filenames already follow
-# (Пармаксъзов → ``parmaksazov``).  Shop names arrive in either script — the
-# same Kaufland is "Кауфланд Варна-Одесос" on one receipt and "Kaufland Varna"
-# on the next — so both sides of a match are folded to Latin first.
-_BG_TO_LATIN = str.maketrans(
-    {
-        "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ж": "zh",
-        "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n",
-        "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f",
-        "х": "h", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sht", "ъ": "a",
-        "ь": "y", "ю": "yu", "я": "ya",
-    }
-)  # fmt: skip
-
-
-def fold_shop(text: str) -> str:
-    """Casefold *text* and transliterate Bulgarian Cyrillic to Latin."""
-    return text.casefold().translate(_BG_TO_LATIN)
-
-
-def shop_matches(query: str, text: str) -> bool:
-    """Whether *query* occurs in *text*, ignoring case and Cyrillic/Latin script.
-
-    Context lookup only: OSM resolution stays an exact branch-key match.
-    """
-    return fold_shop(query) in fold_shop(text)
 
 
 def shop_of(path: Path) -> str | None:

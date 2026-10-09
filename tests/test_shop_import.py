@@ -340,7 +340,7 @@ def _stub_searcher(receipt_name, shop=None):
                 "name": "Pilos Fresh Milk 3.7% 1l",
                 "score": 1.0,
                 "matched_name": receipt_name,
-                "shop": shop,
+                "shop": "Lidl Varna",
             }
         ]
     return []
@@ -384,6 +384,16 @@ class TestBuildStaging:
         assert milk["ean_source"] == "tingbok_receipt_name:1.0"
         # nothing known about the other two: no candidate, no photo, no guess
         assert (beer["ean"], nectarines["ean"]) == (None, None)
+
+    def test_candidates_carry_the_observation_shop(self):
+        staging = build_staging(LIDL_RECEIPT, shop="Lidl Varna", searcher=_stub_searcher, barcode_results=[])
+        assert staging["items"][1]["ean_candidates"][0]["shop"] == "Lidl Varna"
+
+    def test_repeat_purchase_from_another_chain_is_not_filled(self):
+        staging = build_staging(LIDL_RECEIPT, shop="Kaufland Varna", searcher=_stub_searcher, barcode_results=[])
+        milk = staging["items"][1]
+        assert milk["ean"] is None
+        assert "Lidl Varna" in milk["notes"]
 
     def test_shop_recorded(self):
         staging = build_staging(LIDL_RECEIPT, shop="Lidl Varna", searcher=_stub_searcher, barcode_results=[])

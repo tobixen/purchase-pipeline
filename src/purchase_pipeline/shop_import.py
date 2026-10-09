@@ -346,6 +346,7 @@ def build_staging(
         # No shop filter: receipt-name observations are often recorded with no
         # shop, and the same product seen at another shop is still a valid
         # candidate. The reviewer picks; recall matters more than precision here.
+        # Auto-filling is narrower: fill_eans_from_candidates wants the same chain.
         matches = searcher(item["receipt_name"])
         item["ean_candidates"] = [
             {
@@ -353,12 +354,13 @@ def build_staging(
                 "name": m.get("name"),
                 "source": "tingbok_receipt_name",
                 "score": m.get("score"),
+                "shop": m.get("shop"),
             }
             for m in matches
         ]
 
     staging["loose_photos"] = associate_photos(staging["items"], photos)
-    fill_eans_from_candidates(staging["items"])
+    fill_eans_from_candidates(staging["items"], shop=staging.get("shop"))
     return staging
 
 

@@ -192,6 +192,17 @@ candidate anyway — so the photos say "ambiguous" and the staging file says
 certain. Check with a test before changing anything; if it holds, a line the
 photo matcher flagged should be left for review.
 
+## tingbok: a receipt-name match reports only one shop per EAN
+
+`shop-import` fills a repeat purchase only from a score-1.0 candidate observed
+at the same chain, using the `shop` that `/api/ean/search` returns. That is the
+shop of the *first* best-scoring observation for the EAN, so a product whose
+till string was seen at both Lidl and Kaufland reports just one of them, and a
+genuine same-chain repeat can be left for review (the safe direction). The
+`shop=` filter is an exact branch-string match, so it cannot ask "at this
+chain" either. Proposed tingbok change: return every shop the matching name was
+observed at (`shops: [...]`), or accept a chain filter.
+
 ## Not this project: best-before OCR quality
 
 The other half of "populate `ean` + `bb` without human photo inspection".

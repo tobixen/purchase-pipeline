@@ -123,7 +123,8 @@ conservatively and add one afterwards, with a `source` naming the receipt.
 The importer emits one row per line item with `ean_candidates` and
 `needs_review` flags, and **fills `ean`/`bb` itself wherever two independent
 sources agree** — a scanned EAN that the line's own candidate list already
-carried, or (with no photo at all) a candidate scoring 1.0. Every filled field
+carried, or (with no photo at all) a candidate scoring 1.0 that was observed at
+the same chain. Every filled field
 says what filled it in `ean_source`/`bb_source`. A barcode photo with no date of
 its own is paired with the date from the *immediately following* expiry photo;
 that pairing is positional, so the `bb_source` names the frame it was read off
@@ -207,6 +208,10 @@ Batch these flags into one round of questions rather than asking item-by-item.
   truncated/partial/other-shop till strings ranked the right product first at
   ~0.6–0.7. Two candidates both scoring 1.0 (a shop that changed supplier under
   one till string) settle nothing and are left for you, with a note on the row.
+  Only a 1.0 observed at the **same chain** counts (the candidate's `shop`):
+  chains share generic till strings, and on 2026-10-08 Kaufland's "Смядовска
+  луканка" was filled with the Lidl product printed the same way. A 1.0 from
+  another chain or an unrecorded shop stays a candidate, with a note.
 - **New purchase** — no algorithm settles it; a candidate with **`score < 1.0`
   is only a fuzzy suggestion** and can be plausibly wrong (a never-seen name
   still returns somebody else's product at ~0.68). The importer therefore fills
