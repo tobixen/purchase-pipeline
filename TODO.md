@@ -203,6 +203,14 @@ genuine same-chain repeat can be left for review (the safe direction). The
 chain" either. Proposed tingbok change: return every shop the matching name was
 observed at (`shops: [...]`), or accept a chain filter.
 
+## openprices-publish cannot correct a published price
+
+A wrong field on an already-published price (2026-10-08: Kaufland "#XTRA"
+discount sent as `SALE`, should be `LOYALTY_PROGRAM`, price id 343191) can only
+be fixed by a raw `curl -X PATCH /api/v1/prices/ID` with the token. Proposed:
+an `openprices-publish --fix PRICE_ID FIELD=VALUE` (or a separate command) that
+reuses the token and the discount-type validation, and reads the row back.
+
 ## Not this project: best-before OCR quality
 
 The other half of "populate `ean` + `bb` without human photo inspection".
