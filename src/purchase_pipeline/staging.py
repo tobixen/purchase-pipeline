@@ -86,6 +86,7 @@ Per-item routing flags:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 #: Largest sum-vs-total discrepancy accepted as arithmetic rather than error.
@@ -93,6 +94,18 @@ from typing import Any
 #: be a cent away from the sum of its own printed line totals. Two cents is a
 #: missing or misattributed line, not rounding.
 RECONCILE_TOLERANCE = 0.01
+
+
+def inventory_for(staging: Path) -> Path:
+    """The ``inventory.md`` a staging file feeds: ``INVENTORY/staging/X.yaml`` → ``INVENTORY/inventory.md``.
+
+    A file anywhere but a ``staging/`` directory keeps the old default,
+    ``inventory.md`` relative to the cwd.
+    """
+    parent = staging.resolve().parent
+    if parent.name == "staging":
+        return parent.parent / "inventory.md"
+    return Path("inventory.md")
 
 
 class ReconciliationError(ValueError):

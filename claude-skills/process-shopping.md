@@ -64,8 +64,10 @@ allowlisted; grepping the markdown is neither.
 **Always pass the inventory path**, as above. The session's working directory is
 usually somewhere else (the diary repo, for one), and without the path these
 commands read `./inventory.json`: `lookup` and `container` then fail outright, and
-`vocabulary lookup` silently falls back to tingbok. The same goes for
-`purchase-pipeline`: give it `--inventory $INVENTORY_DIR/inventory.md --ledger $LEDGER`.
+`vocabulary lookup` silently falls back to tingbok. `purchase-pipeline` and
+`staging-to-inventory` are the exception: a staging file in
+`$INVENTORY_DIR/staging/` already says which inventory it feeds, so they default
+to `$INVENTORY_DIR/inventory.md`. Give `purchase-pipeline` `--ledger $LEDGER`.
 No global default exists on purpose, because one user may keep several inventories.
 
 ## User instructions
@@ -236,7 +238,7 @@ Once the staging file is reviewed, it runs the ledger → inventory → tingbok
 steps in order (reading/advancing the `status:` block, resumable) and then
 validates (`inventory-md parse` + `inventory-md-check-quality`):
 ```bash
-PP="purchase-pipeline --inventory $INVENTORY_DIR/inventory.md --ledger $LEDGER"   # shorthand below
+PP="purchase-pipeline --ledger $LEDGER"   # shorthand below; inventory.md is found from the staging path
 $PP $INVENTORY_DIR/staging/shopping-YYYY-MM-DD.yaml           # dry run — plan + previews
 $PP $INVENTORY_DIR/staging/shopping-YYYY-MM-DD.yaml --commit  # run pending stages + validate
 ```

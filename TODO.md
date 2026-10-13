@@ -140,13 +140,6 @@ so this overlaps with "derive the Billa branch key from the receipt" above; it i
 the same feature seen from the other end. Until then, `shop-import` could at
 least warn that the shop it wrote will not resolve against the cache.
 
-## `purchase-pipeline` resolves `inventory.md` relative to the cwd
-
-Found 2026-09-24 on the Aug–Sep receipt backlog. Run from anywhere but the
-inventory directory, every file fails with "inventory.md not found" unless
-`--inventory ABS_PATH` is given. The staging file sits in `INVENTORY/staging/`,
-so the default could be derived from its path instead.
-
 ## `shop-import --help` does not document the hand-transcribed receipt format
 
 Found 2026-09-24. The shape that works is `{date, shop, currency, total,

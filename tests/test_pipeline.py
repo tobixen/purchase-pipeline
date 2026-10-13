@@ -235,3 +235,42 @@ class TestBatchMode:
         assert "tingbok_push" not in [m for m, _ in _stage_runs(runs)]
         for p in staging_files:
             assert "  tingbok_push: skipped" in p.read_text(encoding="utf-8")
+
+
+# --- the default --inventory ---------------------------------------------------
+
+
+def _inventory_args(recorded):
+    return {cmd[cmd.index("--inventory") + 1] for cmd in recorded if "--inventory" in cmd}
+
+
+@pytest.fixture
+def staged(tmp_path):
+    """A staging file where it belongs: INVENTORY/staging/."""
+    d = tmp_path / "inv" / "staging"
+    d.mkdir(parents=True)
+    p = d / "shopping-billa.yaml"
+    p.write_text(MINIMAL_STAGING.format(shop="Billa Sozopol"), encoding="utf-8")
+    return p
+
+
+class TestDefaultInventory:
+    def test_derived_from_the_staging_location(self, staged, runs, tmp_path):
+        assert main([str(staged), "--commit"]) == 0
+        inv = tmp_path / "inv" / "inventory.md"
+        assert _inventory_args(runs) == {str(inv)}
+        assert [v[-1] for v in _validations(runs)] == [str(inv), str(inv.with_name("inventory.json"))]
+
+    def test_explicit_inventory_still_wins(self, staged, runs, tmp_path):
+        other = tmp_path / "elsewhere" / "inventory.md"
+        assert main([str(staged), "--commit", "--inventory", str(other)]) == 0
+        assert _inventory_args(runs) == {str(other)}
+
+    def test_files_from_two_inventories_are_refused(self, staged, runs, tmp_path):
+        d = tmp_path / "other" / "staging"
+        d.mkdir(parents=True)
+        second = d / "shopping-kiosk.yaml"
+        second.write_text(MINIMAL_STAGING.format(shop="Beach kiosk"), encoding="utf-8")
+        with pytest.raises(SystemExit, match="--inventory"):
+            main([str(staged), str(second), "--commit"])
+        assert runs == []

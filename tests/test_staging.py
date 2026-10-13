@@ -12,9 +12,11 @@ where a transposed or misattributed line can enter — and the sum is the only
 cross-check that exists.
 """
 
+from pathlib import Path
+
 import pytest
 
-from purchase_pipeline.staging import ReconciliationError, reconcile_total, require_flat
+from purchase_pipeline.staging import ReconciliationError, inventory_for, reconcile_total, require_flat
 
 
 def _staging(items, total=None, **extra):
@@ -152,3 +154,25 @@ class TestBillaMultiplierReproducer:
         )
         with pytest.raises(ReconciliationError):
             require_flat(s)
+
+
+# --- where the inventory lives ------------------------------------------------
+#
+# A staging file sits in INVENTORY/staging/, next to the inventory.md it feeds.
+# Run from anywhere else, a cwd-relative default made every file fail with
+# "inventory.md not found" until --inventory ABS_PATH was spelled out.
+
+
+def test_inventory_is_derived_from_the_staging_directory(tmp_path):
+    staging = tmp_path / "solveig" / "staging" / "shopping-2026-07-24.yaml"
+    assert inventory_for(staging) == tmp_path / "solveig" / "inventory.md"
+
+
+def test_a_relative_staging_path_is_resolved(tmp_path, monkeypatch):
+    (tmp_path / "staging").mkdir()
+    monkeypatch.chdir(tmp_path / "staging")
+    assert inventory_for(Path("shopping.yaml")) == tmp_path / "inventory.md"
+
+
+def test_a_staging_file_outside_staging_falls_back_to_the_cwd(tmp_path):
+    assert inventory_for(tmp_path / "shopping.yaml") == Path("inventory.md")

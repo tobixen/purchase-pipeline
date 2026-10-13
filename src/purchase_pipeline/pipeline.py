@@ -52,6 +52,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from purchase_pipeline.staging import inventory_for
+
 #: The quality gate lives in inventory-md, which owns the inventory format.
 #: Invoked by console-script name rather than by path — like ``inventory-md
 #: parse`` just below it — so this project never has to know where a sibling
@@ -221,7 +223,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Reviewed staging file(s). Several run in order, validating once at the end.",
     )
     ap.add_argument("--commit", action="store_true", help="Run stages and update status (default: dry run)")
-    ap.add_argument("--inventory", type=Path, default=Path("inventory.md"))
+    ap.add_argument(
+        "--inventory",
+        type=Path,
+        help="inventory.md to write (default: the one next to the staging files' staging/ directory, else ./inventory.md)",
+    )
     ap.add_argument("--inventory-json", type=Path, help="Path to inventory.json (default: alongside inventory.md)")
     ap.add_argument("--ledger", type=Path, help="Override ledger path (default: ledger.py's own default)")
     ap.add_argument("--from", dest="from_stage", help="Force-restart at this stage, ignoring its status")
@@ -239,6 +245,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.from_stage and args.from_stage not in (names := [s.name for s in STAGES]):
         sys.exit(f"--from must be one of {names}")
+
+    if args.inventory is None:
+        derived = {inventory_for(p) for p in args.staging}
+        if len(derived) > 1:
+            sys.exit(
+                f"Staging files belong to different inventories ({', '.join(sorted(map(str, derived)))}); pass --inventory"
+            )
+        args.inventory = derived.pop()
 
     inv_json = args.inventory_json or args.inventory.with_name("inventory.json")
 

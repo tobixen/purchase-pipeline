@@ -38,7 +38,7 @@ import yaml
 from inventory_md import additem
 from inventory_md.parser import parse_inventory
 
-from purchase_pipeline.staging import require_flat
+from purchase_pipeline.staging import inventory_for, require_flat
 
 # Units that map to a per-unit mass / volume field rather than a piece count.
 _MASS_UNITS = {"kg", "g"}
@@ -207,13 +207,19 @@ def _print_report(results: list[tuple[dict[str, Any], str, Any]], commit: bool) 
 def main() -> int:  # pragma: no cover - thin CLI wiring
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("staging", type=Path, help="reviewed shopping staging YAML")
-    ap.add_argument("--inventory", type=Path, default=Path("inventory.md"), help="inventory.md to edit")
+    ap.add_argument(
+        "--inventory",
+        type=Path,
+        help="inventory.md to edit (default: the one next to the staging file's staging/ directory, else ./inventory.md)",
+    )
     ap.add_argument("--commit", action="store_true", help="actually write (default: dry run)")
     ap.add_argument("--no-bb-check", action="store_true", help="skip the food-without-best-before check")
     ap.add_argument("--strict", action="store_true", help="treat unresolved categories as errors")
     ap.add_argument("--lang", default=None, help="vocabulary language (default: en)")
     ap.add_argument("--default-container", default="floating", help="container for rows without a location")
     args = ap.parse_args()
+    if args.inventory is None:
+        args.inventory = inventory_for(args.staging)
 
     if not args.inventory.exists():
         print(f"❌ {args.inventory} not found", file=sys.stderr)
