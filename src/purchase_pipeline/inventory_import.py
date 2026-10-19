@@ -39,6 +39,7 @@ from inventory_md import additem
 from inventory_md.parser import parse_inventory
 
 from purchase_pipeline.staging import inventory_for, require_flat
+from purchase_pipeline.tingbok_push import canonical_ean
 
 # Units that map to a per-unit mass / volume field rather than a piece count.
 _MASS_UNITS = {"kg", "g"}
@@ -56,11 +57,13 @@ def staging_item_to_kwargs(
     item: dict[str, Any],
     currency: str,
     default_container: str = "floating",
+    shop: str = "",
 ) -> dict[str, Any] | None:
     """Map a reviewed staging item to :func:`inventory_md.additem.add_item` kwargs.
 
     Returns ``None`` when the item is flagged ``add_to_inventory: false`` (e.g.
-    fast-consumed goods, bags) and should be skipped silently.
+    fast-consumed goods, bags) and should be skipped silently.  An in-store EAN
+    is prefixed with *shop*'s chain slug, the same key ``tingbok-push`` uses.
     """
     if not item.get("add_to_inventory", True):
         return None
@@ -104,11 +107,15 @@ def staging_item_to_kwargs(
     price_unit = (item.get("price_unit") or unit).lower()
     price_str = f"{currency}:{_num(price)}/{price_unit}" if price is not None else None
 
+    ean = item.get("ean")
+    if ean:
+        ean = canonical_ean(str(ean), shop)
+
     return {
         "container_id": item.get("location") or default_container,
         "category": item.get("category"),
         "item_id": item.get("inventory_id"),
-        "ean": item.get("ean"),
+        "ean": ean,
         "isbn": item.get("isbn"),
         "bb": bb,
         "bb_est": bb_est,
@@ -146,7 +153,7 @@ def import_staging(
 
     results: list[tuple[dict[str, Any], str, Any]] = []
     for item in staging.get("items", []):
-        kwargs = staging_item_to_kwargs(item, currency, default_container)
+        kwargs = staging_item_to_kwargs(item, currency, default_container, staging.get("shop") or "")
         if kwargs is None:
             results.append((item, "skip", "add_to_inventory is false"))
             continue

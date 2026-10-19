@@ -95,22 +95,6 @@ store address in the card-terminal footer (`УЛ. РЕПУБЛИКАНСКА 5`)
 the footer. Which address to trust is a per-chain rule, so it belongs in
 `src/purchase_pipeline/data/receipt-formats.json`.
 
-## Bug: `staging-to-inventory` does not shop-prefix in-store EANs
-
-Found 2026-08-05. `tingbok-push` rewrites an in-store (GS1 restricted range) code
-to `lidl-20404741` before pushing, but `inventory_import` writes the same value
-into `inventory.md` bare as `EAN:20404741`. `inventory-md-check-quality` then
-flags every one of them:
-
-    Shop-local EAN lacks shop-name prefix … use EAN:<shop>-20404741
-
-Six lines needed correcting by hand with `inventory-md edit` after one day's
-shopping, so this is not rare — Lidl's `20xxxxxx` range covers a lot of the deli
-counter and own-brand snacks. The two writers should share whatever
-`tingbok_push` uses to decide the prefix. Note the shop name has to come from
-somewhere: `tingbok-push` derives `lidl-` from the staging `shop:` field, so the
-same derivation needs the normalised branch key (see the next item).
-
 ## Bug: `shop-import` does not match a bare in-store scan to its `lidl-` candidate
 
 Found 2026-10-08 (Lidl 2026-10-07). The photo scan of the rice reads `20358037`,
@@ -118,7 +102,8 @@ and the receipt line's own candidate list (from tingbok) carries `lidl-20358037`
 at score 1.0. The importer compares them as strings, so it reported "no receipt
 line lists EAN 20358037 as a candidate" and left the photo loose. Yogurt and
 pork scans went the same way. Normalise both sides with the same shop-prefix
-logic before comparing (same family as the item above).
+logic before comparing — `tingbok_push.canonical_ean()`, which
+`staging-to-inventory` already uses.
 
 ## Not this project: `inventory-md edit --tag ""` leaves a bare `tag:`
 

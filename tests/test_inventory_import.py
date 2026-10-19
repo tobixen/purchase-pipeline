@@ -182,6 +182,24 @@ def test_kwargs_name_falls_back_to_receipt_name():
     assert kw["name"] == "PRYASNO MLYAKO"
 
 
+@pytest.mark.parametrize(
+    "ean, shop, expected",
+    [
+        ("20404741", "Lidl Varna бул. Владислав", "lidl-20404741"),  # in-store PLU
+        (20404741, "Lidl", "lidl-20404741"),  # YAML may parse it as an int
+        ("lidl-20404741", "Lidl", "lidl-20404741"),  # already prefixed
+        ("3800123456789", "Lidl", "3800123456789"),  # global EAN-13
+        ("20404741", "", "20404741"),  # no shop to derive a prefix from
+        (None, "Lidl", None),
+    ],
+)
+def test_kwargs_shop_prefixes_instore_ean(ean, shop, expected):
+    """Same key tingbok-push uses, so inventory-md-check-quality stays quiet."""
+    item = {"category": "ham", "bb": "2026-11", "ean": ean, "location": "food1"}
+    kw = staging_item_to_kwargs(item, "EUR", shop=shop)
+    assert kw["ean"] == expected
+
+
 # --- import_staging ---------------------------------------------------------
 
 
@@ -317,3 +335,24 @@ def test_import_staging_autogen_id_for_food(md_path: Path):
     assert action == "add"
     assert res.item_id == "milk-2026-06-14"
     assert "ID:milk-2026-06-14" in md_path.read_text(encoding="utf-8")
+
+
+def test_import_staging_shop_prefixes_instore_ean(md_path: Path):
+    staging = {
+        "session": "2026-06-14",
+        "shop": "Lidl Varna",
+        "currency": "EUR",
+        "items": [
+            {
+                "category": "ham",
+                "name": "Deli ham",
+                "bb": "2026-06-20",
+                "ean": "20404741",
+                "location": "food1",
+                "inventory_id": "ham-2026-06-14",
+            },
+        ],
+    }
+    import_staging(staging, md_path, commit=True)
+    text = md_path.read_text(encoding="utf-8")
+    assert "EAN:lidl-20404741" in text
