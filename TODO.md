@@ -105,6 +105,17 @@ pork scans went the same way. Normalise both sides with the same shop-prefix
 logic before comparing — `tingbok_push.canonical_ean()`, which
 `staging-to-inventory` already uses.
 
+## `chain_key()` and `chain_slug()` disagree on Cyrillic shop names
+
+Found in review 2026-10-19. Two functions name "the chain of a shop", both from
+the first token: `shop_names.chain_key("Кауфланд Варна")` transliterates to
+`kaufland`, while `tingbok_push.chain_slug()` returns `None` on purpose, so a
+non-Latin prefix is never built. A shop written in Cyrillic therefore gets
+same-chain matching in `shop-import` but bare in-store EANs from `tingbok-push`
+and `staging-to-inventory`, the mismatch the shop-prefix fix set out to remove.
+Build both on one tokeniser. Whether the tingbok prefix should transliterate
+is a decision about tingbok keys, so settle that first.
+
 ## Not this project: `inventory-md edit --tag ""` leaves a bare `tag:`
 
 Found 2026-10-08. Clearing an item's only tag with `--tag ""` wrote
