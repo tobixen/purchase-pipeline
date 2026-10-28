@@ -200,6 +200,30 @@ be fixed by a raw `curl -X PATCH /api/v1/prices/ID` with the token. Proposed:
 an `openprices-publish --fix PRICE_ID FIELD=VALUE` (or a separate command) that
 reuses the token and the discount-type validation, and reads the row back.
 
+## Two receipts on one day share one photo set
+
+Lidl 2026-10-28: two receipts from one visit (the till split the basket), one
+photo stream. `shop-import` was run once per receipt with the same
+`barcodes.json`, and each run matched every photo on its own. The Панагюрска
+луканка scan (`170824`) was correctly put on the луканка line of receipt 1 *and*
+on `ПРЕСЕН ЛУК ВРЪЗКА` of receipt 2, a 0.51 fuzzy candidate, with its bb. Both
+staging files also printed the same ~55 loose photos.
+
+Either accept several receipts in one `shop-import` run and match photos against
+their union, or let a second run skip photos the first one claimed.
+
+The bare-scan bug above is still open and caused most of that loose-photo list:
+`20974619`, `20039547`, `20051389`, `20113476`, `20324599` and `20529437` were
+all left loose although the line's candidate list carries the `lidl-` form.
+
+## Not this project: `lidl-history --fetch` prints the gross total
+
+Found on the same Lidl 2026-10-28 run. `lidl-history --fetch` prints the
+**gross** total (130.69 / 60.66) in its summary, although the record's
+`total_price` holds the amount paid after Lidl Plus discounts (125.20 / 60.01),
+which is what goes in the diary. Print the paid total, or both. Belongs in
+order-scrapers.
+
 ## Not this project: best-before OCR quality
 
 The other half of "populate `ean` + `bb` without human photo inspection".
