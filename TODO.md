@@ -116,6 +116,22 @@ and `staging-to-inventory`, the mismatch the shop-prefix fix set out to remove.
 Build both on one tokeniser. Whether the tingbok prefix should transliterate
 is a decision about tingbok keys, so settle that first.
 
+## `shopping-context` misses a cached branch spelled in the other script
+
+Found 2026-10-29. `shopping-context "Одесос"`, `"Котва"` and `"Яхтен"` all
+printed "not cached", although all three branches are cached, under keys whose
+chain name is in Latin script (`Odesos Varna ул. Сан Стефано 23`, `Kotva Varna ул. Сан Стефано`,
+`LZ Yahten magazin Varna Морска гара ул. Вълнолома`). The receipt prints the
+shop in Cyrillic, which is what one naturally types, so the candidate list
+that is supposed to name the branches came back empty. The OSM ids had to be
+dug out of the comments in old staging files.
+
+Exact-key resolution stays as it is: substring resolution once sent a Sozopol
+trip to the Varna Billa. But the candidate *listing* should transliterate both
+sides before comparing, and also match the `shop:` values of the staging files
+that `shopping-context` already lists under "Recent staging files". Same tokeniser question as `chain_key()`
+above.
+
 ## Not this project: `inventory-md edit --tag ""` leaves a bare `tag:`
 
 Found 2026-10-08. Clearing an item's only tag with `--tag ""` wrote
