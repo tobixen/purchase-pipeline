@@ -224,6 +224,26 @@ Found on the same Lidl 2026-10-28 run. `lidl-history --fetch` prints the
 which is what goes in the diary. Print the paid total, or both. Belongs in
 order-scrapers.
 
+## `off-upload` cannot write nutrition values or ingredients text
+
+The products YAML only carries names, brands, quantity, categories, stores,
+countries and images, so a new product lands on OFF with photos but no
+nutrition table and no ingredient list; somebody has to type them in by hand
+from the photos. The OFF write API takes both: `nutriment_<name>` fields
+(`energy-kcal`, `energy-kj`, `fat`, `saturated-fat`, `carbohydrates`, `sugars`,
+`proteins`, `salt`, …) with `nutrition_data_per=100g`, and
+`ingredients_text_<lang>`.
+
+Proposed: optional `nutrition:` (a mapping per 100 g) and `ingredients_text:`
+keys in the YAML, shown in the dry run, written on `--commit` and checked in
+the read-back verification.
+
+First real case: Мургаш кисело мляко с каймак 4% 900 g, `3800235752111`
+(Одесос, 2026-10-26), uploaded without them. Its values are in the header of
+the inventory repo's `staging/off-products-2026-10-26.yaml`: 66 kcal / 277 kJ,
+fat 4.0 (saturated 3.0), carbohydrates 3.5 (sugars 3.5), protein 4.0, salt 0;
+ingredients "краве мляко („BG“) и закваска".
+
 ## Not this project: best-before OCR quality
 
 The other half of "populate `ean` + `bb` without human photo inspection".
