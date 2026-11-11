@@ -266,3 +266,18 @@ The other half of "populate `ean` + `bb` without human photo inspection".
 Association is done here; extraction quality — dot-matrix print, foil, curved
 surfaces, low-contrast embossing — is tracked in `~/inventory-md/docs/TODO.md`.
 Nothing here can improve a date the OCR could not read.
+
+## The ledger drops the weight of hand-written weighed lines
+
+Found 2026-11-11 in code review. A hand-transcribed staging row for weighed
+produce is usually written as `mass: 1732g` + `price_unit: kg` with no `qty`,
+but `staging_to_rows` reads neither key: the ledger row comes out as `qty: null`,
+`unit: pcs`, the gross per-kg price as `unit_price` and the net `line_total` as
+`total`, so the weight is lost and the row contradicts itself. `shop-import`'s
+own form (`qty: <kg>`, `unit: kg`) is fine, and `staging.py` documents neither
+`mass` nor `price_unit`. Affected so far: the 2026-07-26 and 2026-11-01 Billa
+trips in `~/regnskap/purchases.jsonl`.
+
+Either convert `mass` + `price_unit` to `qty` kg / `unit: kg` (and derive
+`price_net` from the net total when a discount line is present), or refuse such
+rows, and document the choice in `staging.py`. Then repair the affected rows.
