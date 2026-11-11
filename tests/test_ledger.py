@@ -419,6 +419,45 @@ class TestCombineDuplicateLines:
         assert [r["receipt_name"] for r in rows] == ["A", "B"]
         assert rows[0]["qty"] == 2
 
+    def test_weighed_lines_without_qty_combined(self):
+        # Two weighings of the same produce at the same per-kg price: staging rows
+        # carry mass, not a piece count, so qty is None on both.
+        staging = {
+            "session": "2026-11-01",
+            "shop": "Billa",
+            "currency": "EUR",
+            "receipt_total": 1.14,
+            "items": [
+                {"receipt_name": "КАРТОФИ", "price": 0.79, "price_unit": "kg", "mass": "1732g", "line_total": 0.85},
+                {"receipt_name": "КАРТОФИ", "price": 0.79, "price_unit": "kg", "mass": "596g", "line_total": 0.29},
+            ],
+        }
+        rows = staging_to_rows(staging)
+        assert len(rows) == 1
+        assert rows[0]["qty"] is None
+        assert rows[0]["total"] == 1.14
+
+    def test_explicit_null_qty_with_line_total(self):
+        staging = {
+            "session": "2026-11-01",
+            "shop": "Billa",
+            "currency": "EUR",
+            "receipt_total": 0.85,
+            "items": [{"receipt_name": "КАРТОФИ", "price": 0.79, "qty": None, "line_total": 0.85}],
+        }
+        assert staging_to_rows(staging)[0]["total"] == 0.85
+
+    def test_known_and_unknown_qty_merge_to_unknown(self):
+        rows = combine_duplicate_lines(
+            [
+                {"date": "d", "shop": "s", "receipt_name": "X", "ean": None, "unit_price": 1.0, "qty": 1, "total": 1.0},
+                {"date": "d", "shop": "s", "receipt_name": "X", "ean": None, "unit_price": 1.0, "qty": None, "total": 1.0},
+            ]
+        )
+        assert len(rows) == 1
+        assert rows[0]["qty"] is None
+        assert rows[0]["total"] == 2.0
+
 
 class TestUpsert:
     def test_reimport_is_noop(self, tmp_path):

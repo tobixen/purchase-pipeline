@@ -114,7 +114,12 @@ def combine_duplicate_lines(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for r in rows:
         key = (r.get("date"), r.get("shop"), r.get("receipt_name"), r.get("ean"), r.get("unit_price"))
         if key in combined:
-            combined[key]["qty"] += r.get("qty") or 0
+            # Weighed lines carry mass, not a piece count: a count that is
+            # unknown on either line stays unknown.
+            if combined[key].get("qty") is None or r.get("qty") is None:
+                combined[key]["qty"] = None
+            else:
+                combined[key]["qty"] += r["qty"]
             combined[key]["total"] = round((combined[key].get("total") or 0) + (r.get("total") or 0), 2)
         else:
             combined[key] = dict(r)
@@ -272,7 +277,11 @@ def staging_to_rows(staging: dict[str, Any]) -> list[dict[str, Any]]:
                 # line_total is the net (charged) amount and is authoritative; price*qty
                 # is only a fallback and re-derives from rounded inputs — wrong by a cent
                 # on weighed goods. See purchase_pipeline/staging.py for the field semantics.
-                total_=item.get("line_total", round(item.get("price", 0) * item.get("qty", 0), 2)),
+                total_=(
+                    item["line_total"]
+                    if item.get("line_total") is not None
+                    else round((item.get("price") or 0) * (item.get("qty") or 0), 2)
+                ),
                 currency=currency,
                 ean=item.get("ean"),
                 name=item.get("name"),
