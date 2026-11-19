@@ -29,6 +29,7 @@ rather than failing on a duplicate ID.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -51,6 +52,25 @@ def _num(value: Any) -> str:
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
     return str(value)
+
+
+_AMOUNT_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([a-z]+)\s*$", re.IGNORECASE)
+
+
+def _divide_amount(total: str, count: str) -> str | None:
+    """``"400ml" / "2"`` → ``"200ml"``; ``None`` if unparsable or not a clean split."""
+    m = _AMOUNT_RE.match(total)
+    try:
+        n = int(count)
+    except ValueError:
+        return None
+    if not m or n <= 0:
+        return None
+    per = float(m.group(1)) / n
+    rounded = round(per, 3)
+    if abs(rounded * n - float(m.group(1))) > 1e-9:
+        return None
+    return f"{_num(rounded)}{m.group(2)}"
 
 
 def staging_item_to_kwargs(
@@ -91,12 +111,22 @@ def staging_item_to_kwargs(
         else:
             out_qty = _num(qty)
 
-    # A piece count combined with an explicit TOTAL mass/volume is written as
-    # "<total>/<count>" so the per-piece size stays recoverable — e.g. 3 peppers
-    # weighing 543 g → "qty:3 mass:543g/3", 6 cans totalling 3 l → "volume:3l/6".
-    # A single piece keeps the bare total.
+    # A piece count combined with an explicit TOTAL mass/volume.  Weighed
+    # (by-weight priced) produce is non-uniform, so the measured total is kept as
+    # "<total>/<count>" — 3 peppers weighing 543 g → "qty:3 mass:543g/3".
+    # Uniform packages are written per unit — 2 × 200 ml → "qty:2 volume:200ml"
+    # — falling back to the divisor form only when the total doesn't divide
+    # cleanly.  A single piece keeps the bare total.
+    weighed = (item.get("price_unit") or "").lower() in _MASS_UNITS | _VOLUME_UNITS
+
     def _per_count(total: str) -> str:
-        return f"{total}/{out_qty}" if out_qty and out_qty != "1" else total
+        if not out_qty or out_qty == "1":
+            return total
+        if not weighed:
+            per_unit = _divide_amount(total, out_qty)
+            if per_unit:
+                return per_unit
+        return f"{total}/{out_qty}"
 
     if mass is None and mass_total:
         mass = _per_count(mass_total)

@@ -180,8 +180,10 @@ slugs, and don't hand-roll `curl` calls to `/api/lookup/`. Watch mistranslated r
 **count** (3 peppers), never the kg weight (`qty: 0.543` is wrong). Put the
 **total** weight in `mass:` (`543g`) and the per-kg price in `price` with
 `price_unit: kg`; the importer writes `qty:3 mass:543g/3 price:EUR:.../kg`
-(single piece → bare `mass:543g`). Packaged multi-buys use the total too
-(2×1l milk → `volume: 2l` → `volume:2l/2`). **Ask the user for the count**
+(single piece → bare `mass:543g`). The `total/count` form is only for weighed,
+non-uniform produce; packaged multi-buys also put the **total** in the staging
+file (2×200 ml mayo → `qty: 2`, `volume: 400ml`), but the importer divides it
+out and writes the per-unit size (`qty:2 volume:200ml`). **Ask the user for the count**
 when it isn't obvious from the receipt.
 
 **tingbok cross-check (gate — the user MUST respond to these before you proceed):**
@@ -511,9 +513,7 @@ This skill and the scripts are quite fresh.  For each run, try to pinpoint probl
     keeps biting.
 * Quantity vs mass — **mostly resolved** by the Stage-2 "Quantities — count, not weight"
   section (qty = piece count; total weight in `mass:`; per-kg price with `price_unit: kg`;
-  packaged multi-buys use the total; ask the user for the count). Remaining decision:
-  * Pin down per-unit vs total notation: the importer writes `mass:450g/3` (total/count),
-    while `qty:3 mass:150g` (per-pack) was the original wish — pick one and document it.
+  packaged multi-buys are written per unit; ask the user for the count). Remaining:
   * The "rename ledger `qty`→`purchase-qty`" idea is **not** worth doing: the importer
     already distinguishes `mass`/`volume` from the count, so it would be churn.
 * Ad-hoc EAN lookup (2026-07-02) — **done**: `inventory-md ean EAN -d DIR`.

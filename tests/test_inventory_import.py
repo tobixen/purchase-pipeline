@@ -100,12 +100,42 @@ def test_kwargs_single_piece_total_mass_is_bare():
     assert kw["price"] == "EUR:0.66/kg"
 
 
-def test_kwargs_count_with_total_volume():
+def test_kwargs_packaged_multibuy_volume_is_per_unit():
+    # Uniform packages: the total is divided out — "qty:6 volume:0.5l", not "3l/6".
+    # The "/count" divisor form is reserved for weighed, non-uniform produce.
     item = {"category": "beer", "qty": 6, "unit": "pcs", "volume": "3l", "price": 0.51}
     kw = staging_item_to_kwargs(item, "EUR")
     assert kw["qty"] == "6"
-    assert kw["volume"] == "3l/6"
+    assert kw["volume"] == "0.5l"
     assert kw["price"] == "EUR:0.51/pcs"  # price_unit defaults to unit
+
+
+def test_kwargs_packaged_multibuy_mayo_2026_11_19():
+    # Kaufland 2026-11-19: 2 × 200 ml mayo was written "qty:2 volume:400ml/2".
+    item = {"category": "mayonnaise", "qty": 2, "volume": "400ml", "price": 0.71}
+    kw = staging_item_to_kwargs(item, "EUR")
+    assert kw["qty"] == "2"
+    assert kw["volume"] == "200ml"
+
+
+def test_kwargs_packaged_multibuy_mass_is_per_unit():
+    item = {"category": "wafer", "qty": 2, "mass": "110g", "price": 0.35}
+    kw = staging_item_to_kwargs(item, "EUR")
+    assert kw["mass"] == "55g"
+
+
+def test_kwargs_packaged_multibuy_uneven_total_keeps_divisor():
+    # A total that doesn't divide cleanly is kept as-is rather than rounded.
+    item = {"category": "juice", "qty": 3, "volume": "1l", "price": 1.0}
+    kw = staging_item_to_kwargs(item, "EUR")
+    assert kw["volume"] == "1l/3"
+
+
+def test_kwargs_weighed_produce_keeps_divisor_even_when_divisible():
+    item = {"category": "oranges", "qty": 3, "mass": "834g", "price": 0.99, "price_unit": "kg"}
+    assert staging_item_to_kwargs(item, "EUR")["mass"] == "834g/3"
+    item = {"category": "tomatoes", "qty": 2, "mass": "600g", "price": 1.95, "price_unit": "kg"}
+    assert staging_item_to_kwargs(item, "EUR")["mass"] == "600g/2"
 
 
 def test_kwargs_bb_est_suffix_split():
