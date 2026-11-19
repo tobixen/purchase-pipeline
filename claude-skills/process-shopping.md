@@ -194,9 +194,14 @@ for every `ean` you assign, compare the tingbok record to what you bought:
 - tingbok has the EAN but its description **does not match** (wrong product,
   wrong quantity) → **flag it and stop**; the user MUST confirm or correct the
   EAN before anything irreversible.
-- the EAN is **not in tingbok** → **flag it**; the user MUST confirm the EAN.
-  This applies to **any** barcoded item, food or not — push it once confirmed
-  (use `tingbok_name`/`tingbok_categories` so the new tingbok entry is useful).
+- the EAN is **not in tingbok** → push it (use `tingbok_name`/`tingbok_categories`
+  so the new tingbok entry is useful), for **any** barcoded item, food or not.
+  No user confirmation is needed when the read is unambiguous: a valid check
+  digit **and** the printed digits legibly agreeing with it (or two independent
+  scans agreeing). Flag it only when there is doubt — a `barcode_conflict`, a
+  decode that disagrees with the printed digits, or digits you could not read.
+  A valid check digit alone proves nothing: a 1↔7 / 2↔8 misdecode can still
+  checksum (2026-11-19: `3800803656988` decoded for a printed `3800203656922`).
 - a **food** product is not in tingbok → flag it and encourage the user to take
   front/ingredients/nutrition/packaging photos so it can be posted to OFF.
 
