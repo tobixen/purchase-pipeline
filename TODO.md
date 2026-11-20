@@ -281,3 +281,31 @@ trips in `~/regnskap/purchases.jsonl`.
 Either convert `mass` + `price_unit` to `qty` kg / `unit: kg` (and derive
 `price_net` from the net total when a discount line is present), or refuse such
 rows, and document the choice in `staging.py`. Then repair the affected rows.
+
+## `tingbok-push` copies inventory text and totals into tingbok verbatim
+
+Found reviewing tingbok's data auto-commits of 2026-11-16..19:
+
+* **Product names carry inventory annotations.**  Parenthesised notes
+  about where an item was moved, its condition or why it was bought end
+  up in tingbok's public product names.  Strip such annotations before
+  the push (or push only the receipt/label name), then clean the
+  existing entries once.
+* **`quantity` gets the total/count form.**  tingbok's `quantity` is the
+  size of one pack, but a line like `mass:600g/3` is pushed as `600g/3`
+  (e.g. 4335619053588 went from `200g` to `600g/3`; about 25 entries are
+  in that form now).  Divide it out, or skip it for weighed produce, and
+  fix the existing entries.  4a37ab2 stops new packaged lines producing
+  the form, but not the push of what is already there.
+* **Undated prices with a pack count as `unit`.**  `lidl-20519681` got
+  `{date: null, shop: null, unit: "6", price: 2.45}`, duplicating a
+  dated observation.  Reject non-unit `unit` values and skip prices
+  already recorded.
+
+## Per-piece-priced produce weighed at home becomes a fake per-unit mass
+
+`staging-to-inventory` decides "weighed" from `price_unit` alone, so 3
+avocados at EUR/pcs with a measured `mass: 600g` are written `qty:3
+mass:200g` — a per-unit size nobody measured.  The divisor form
+(`600g/3`) is the honest one here.  Needs an explicit staging flag
+(`measured_total: true`) or a produce-category check, plus a test.
