@@ -165,13 +165,6 @@ lines that did match; when none match, the run says "Nothing to publish (no EAN
 rows …)", which points at the ledger rather than the typo. Report every `--only`
 code that matched no row and exit non-zero.
 
-## A malformed staging file crashes the whole batch with a raw traceback
-
-Found 2026-09-24. A colon inside an unquoted `name:` value made PyYAML raise, and
-`purchase-pipeline A.yaml B.yaml …` died with a traceback naming neither the
-file nor the line. Parse every file up front, before any stage runs, and report
-`FILE:LINE: message`.
-
 ## The inventory stage does not verify its writes survived
 
 Found 2026-09-24. A parallel session rebuilt the Oslo house inventory's `inventory.md`

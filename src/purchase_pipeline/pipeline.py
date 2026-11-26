@@ -33,6 +33,11 @@ per file: it re-parses and quality-checks the whole of ``inventory.md``, so it
 says the same thing however many files were just written, at about two minutes a
 go. One day with three shops is the normal case for this.
 
+Every file is read, parsed and checked against the staging schema (including
+the receipt reconciliation) **before any stage runs**, and every problem found
+is reported as ``FILE:LINE: message``. One broken file in a batch then stops
+nothing half-way: no earlier file has been committed by the time it is found.
+
 Usage::
 
     pipeline.py staging/shopping-DATE.yaml             # dry run — show plan + previews
@@ -52,7 +57,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from purchase_pipeline.staging import inventory_for
+from purchase_pipeline.staging import inventory_for, require_flat
 
 #: The quality gate lives in inventory-md, which owns the inventory format.
 #: Invoked by console-script name rather than by path — like ``inventory-md
@@ -151,6 +156,32 @@ def _stage_cmd(
         cmd = [*py, "purchase_pipeline.tingbok_push", str(staging)]
         return cmd + ["--commit"] if commit else cmd
     raise ValueError(stage.name)
+
+
+def preparse(paths: list[Path], yaml: Any) -> list[str]:
+    """Read, parse and schema-check every staging file; return one error line per bad file.
+
+    Each line reads ``FILE:LINE: message`` when YAML can say where the problem
+    is (1-based, as editors count), else ``FILE: message``. Doing this for all
+    files before the first stage runs is what keeps a typo in the third file of
+    a batch from failing after the first two were already committed.
+    """
+    errors = []
+    for path in paths:
+        try:
+            require_flat(yaml.safe_load(path.read_text(encoding="utf-8")))
+        except OSError as e:
+            errors.append(f"{path}: {e.strerror or e}")
+        except yaml.MarkedYAMLError as e:
+            mark = e.problem_mark or e.context_mark
+            where = f"{path}:{mark.line + 1}" if mark else str(path)
+            what = ", ".join(x for x in (e.context, e.problem) if x) or str(e)
+            if e.context_mark and mark and e.context_mark.line != mark.line:
+                what += f" (started at line {e.context_mark.line + 1})"
+            errors.append(f"{where}: {what}")
+        except (yaml.YAMLError, ValueError) as e:
+            errors.append(f"{path}: {e}")
+    return errors
 
 
 def _process_file(staging: Path, args: argparse.Namespace, inv_json: Path, yaml: Any) -> tuple[int, dict[str, str]]:
@@ -255,6 +286,12 @@ def main(argv: list[str] | None = None) -> int:
         args.inventory = derived.pop()
 
     inv_json = args.inventory_json or args.inventory.with_name("inventory.json")
+
+    if errors := preparse(args.staging, yaml):
+        for line in errors:
+            print(line, file=sys.stderr)
+        print(f"✗ {len(errors)} staging file(s) unusable; nothing was run.", file=sys.stderr)
+        return 1
 
     done: list[tuple[Path, dict[str, str]]] = []
     for i, staging in enumerate(args.staging):

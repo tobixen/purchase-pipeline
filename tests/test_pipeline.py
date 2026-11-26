@@ -274,3 +274,74 @@ class TestDefaultInventory:
         with pytest.raises(SystemExit, match="--inventory"):
             main([str(staged), str(second), "--commit"])
         assert runs == []
+
+
+# --- every file is parsed before any stage runs ---------------------------------
+#
+# 2026-09-24: a colon inside an unquoted `name:` value made PyYAML raise, and
+# `purchase-pipeline A.yaml B.yaml …` died with a traceback naming neither the
+# file nor the line — after the earlier files' stages had already run.
+
+
+class TestPreParse:
+    def test_a_broken_later_file_stops_the_run_before_any_stage(self, staging_files, runs, tmp_path, capsys):
+        broken = staging_files[2]
+        broken.write_text(broken.read_text(encoding="utf-8") + "items:\n  - name: Kashkaval: Vitosha\n")
+        rc = main([*map(str, staging_files), "--commit", "--inventory", str(tmp_path / "inventory.md")])
+        assert rc != 0
+        assert runs == []
+        assert "  ledger: pending" in staging_files[0].read_text(encoding="utf-8")
+        err = capsys.readouterr().err
+        assert f"{broken}:11: " in err  # 1-based line of the offending `name:`
+        assert "Traceback" not in err
+
+    def test_every_broken_file_is_reported(self, staging_files, runs, tmp_path, capsys):
+        for p in staging_files[:2]:
+            p.write_text("shop: [unclosed\n", encoding="utf-8")
+        rc = main([*map(str, staging_files), "--inventory", str(tmp_path / "inventory.md")])
+        assert rc != 0
+        err = capsys.readouterr().err
+        assert str(staging_files[0]) in err
+        assert str(staging_files[1]) in err
+        assert str(staging_files[2]) not in err
+
+    def test_the_dry_run_checks_too(self, staging_files, runs, tmp_path, capsys):
+        staging_files[1].write_text("shop: [unclosed\n", encoding="utf-8")
+        rc = main([*map(str, staging_files), "--inventory", str(tmp_path / "inventory.md")])
+        assert rc != 0
+        assert runs == []
+        assert "# Pipeline for" not in capsys.readouterr().out
+
+    def test_a_missing_file_is_reported_by_name(self, staging_files, runs, tmp_path, capsys):
+        missing = tmp_path / "shopping-nosuch.yaml"
+        rc = main([str(staging_files[0]), str(missing), "--commit", "--inventory", str(tmp_path / "inventory.md")])
+        assert rc != 0
+        assert runs == []
+        assert str(missing) in capsys.readouterr().err
+
+    def test_a_file_the_stages_would_refuse_is_caught_up_front(self, staging_files, runs, tmp_path, capsys):
+        """An unbalanced receipt fails every stage's `require_flat` — so fail it before the batch starts."""
+        bad = staging_files[1]
+        bad.write_text(
+            bad.read_text(encoding="utf-8") + "receipt_total: 10.00\nitems:\n  - name: Beer\n    price: 2.50\n",
+            encoding="utf-8",
+        )
+        rc = main([*map(str, staging_files), "--commit", "--inventory", str(tmp_path / "inventory.md")])
+        assert rc != 0
+        assert runs == []
+        err = capsys.readouterr().err
+        assert f"{bad}: " in err
+        assert "does not reconcile" in err
+
+    def test_a_non_mapping_file_is_reported(self, staging_files, runs, tmp_path, capsys):
+        staging_files[0].write_text("- just\n- a list\n", encoding="utf-8")
+        rc = main([*map(str, staging_files), "--inventory", str(tmp_path / "inventory.md")])
+        assert rc != 0
+        assert f"{staging_files[0]}: " in capsys.readouterr().err
+
+    def test_a_yaml_error_names_where_the_construct_started(self, staging_files, runs, tmp_path, capsys):
+        staging_files[0].write_text("shop: x\ntags: [a,\n  b: c\n", encoding="utf-8")
+        main([str(staging_files[0]), "--inventory", str(tmp_path / "inventory.md")])
+        err = capsys.readouterr().err
+        assert f"{staging_files[0]}:4: while parsing a flow sequence, expected" in err
+        assert "(started at line 2)" in err
